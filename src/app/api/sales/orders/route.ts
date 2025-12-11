@@ -5,7 +5,15 @@ import { authOptions } from '../../../../lib/auth';
 
 export async function GET() {
   const data = await prisma.salesOrder.findMany({
-    include: { items: true },
+    include: {
+      items: {
+        include: {
+          inventoryItem: {
+            include: { commercialFamily: true }
+          }
+        }
+      }
+    },
     orderBy: { createdAt: 'desc' }
   });
   return NextResponse.json(data);

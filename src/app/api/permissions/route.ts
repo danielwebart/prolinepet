@@ -48,7 +48,7 @@ export async function GET() {
               LIMIT 1
             ), true) AS allowed
           FROM "Program" p
-          WHERE p."moduleId"=${m.id} AND p."isActive"=true
+          WHERE p."moduleId"=${m.id} AND p."isActive"=true AND p."showInMenu"=true
           ORDER BY p."name"
         `);
         const allowedPrograms = [] as any[];

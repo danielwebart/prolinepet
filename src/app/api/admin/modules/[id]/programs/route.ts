@@ -36,7 +36,7 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
     if (!allowed) return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     const mid = Number(params.id);
     if (!mid) return NextResponse.json({ error: 'Módulo inválido' }, { status: 400 });
-    const programs = await prisma.$queryRawUnsafe(`SELECT "id", "code", "name", "description", "isActive" FROM "Program" WHERE "moduleId"=${mid} ORDER BY "name"`);
+    const programs = await prisma.$queryRawUnsafe(`SELECT "id", "code", "name", "description", "isActive", "showInMenu" FROM "Program" WHERE "moduleId"=${mid} ORDER BY "name"`);
     return NextResponse.json({ programs });
   } catch (err: any) {
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
@@ -56,10 +56,11 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const code = String(body.code || '').trim();
     const name = String(body.name || '').trim();
     const description = body.description ? String(body.description).trim() : null;
+    const showInMenu = body.showInMenu === false ? false : true;
     if (!mid || !code || !name) return NextResponse.json({ error: 'Parâmetros obrigatórios' }, { status: 400 });
     const exists: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "Program" WHERE "code"='${code}'`);
     if (exists.length > 0) return NextResponse.json({ error: 'Código já cadastrado' }, { status: 409 });
-      await prisma.$executeRawUnsafe(`INSERT INTO "Program" ("moduleId", "code", "name", "description", "isActive") VALUES (${mid}, '${code}', '${name.replace(/'/g, "''")}', ${description ? `'${description.replace(/'/g, "''")}'` : 'NULL'}, TRUE)`);
+      await prisma.$executeRawUnsafe(`INSERT INTO "Program" ("moduleId", "code", "name", "description", "isActive", "showInMenu") VALUES (${mid}, '${code}', '${name.replace(/'/g, "''")}', ${description ? `'${description.replace(/'/g, "''")}'` : 'NULL'}, TRUE, ${showInMenu ? 'TRUE' : 'FALSE'})`);
     const row: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "Program" WHERE "code"='${code}' LIMIT 1`);
     return NextResponse.json({ ok: true, id: row[0]?.id });
   } catch (err: any) {

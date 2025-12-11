@@ -39,11 +39,23 @@ export default function RepresentativePage() {
   }, [clients, linkedIds, clientQuery, mode]);
 
   const loadUsers = async () => {
-    const res = await fetch("/api/users?salesRepAdmin=1");
-    const arr = await res.json();
-    setUsers(Array.isArray(arr) ? arr : []);
-    if (!selectedUserId && Array.isArray(arr) && arr.length) {
-      setSelectedUserId(arr[0].id);
+    try {
+      // Buscar todos os usuários e filtrar representantes no cliente,
+      // para contornar qualquer inconsistência do endpoint com querystring
+      const resAll = await fetch("/api/users");
+      let list: any[] = [];
+      if (resAll.ok && (resAll.headers.get("content-type") || "").includes("application/json")) {
+        const arrAll = await resAll.json().catch(() => []);
+        list = Array.isArray(arrAll) ? arrAll : [];
+      }
+      const reps = list.filter((u: any) => Boolean(u?.salesRepAdmin));
+      const finalList = reps.length > 0 ? reps : list;
+      setUsers(finalList);
+      if (!selectedUserId && finalList.length) {
+        setSelectedUserId(finalList[0].id);
+      }
+    } catch (err) {
+      setUsers([]);
     }
   };
 

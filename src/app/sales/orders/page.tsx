@@ -64,32 +64,88 @@ export default function SalesOrdersPage() {
   }, [orders, q, status, dateStart, dateEnd]);
 
   const statusColor = (s: string) => {
-    switch ((s || '').toUpperCase()) {
-      case 'OPEN': return 'bg-yellow-100 text-yellow-800';
-      case 'FINALIZED': return 'bg-green-100 text-green-800';
-      case 'CANCELLED': return 'bg-red-100 text-red-800';
+    const v = (s || '').trim();
+    switch (v) {
+      case 'Orçamento': return 'bg-gray-100 text-gray-800';
+      case 'Aguardando Integração': return 'bg-yellow-100 text-yellow-800';
+      case 'Erro na integração': return 'bg-red-100 text-red-800';
+      case 'Integrado': return 'bg-blue-100 text-blue-800';
+      case 'Em fila produção': return 'bg-amber-100 text-amber-800';
+      case 'Em produção': return 'bg-indigo-100 text-indigo-800';
+      case 'Produzido/Estocado': return 'bg-cyan-100 text-cyan-800';
+      case 'Faturado': return 'bg-green-100 text-green-800';
+      case 'Cancelado': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
 
+  const IconBtn = ({ title, onClick, children, disabled = false }: any) => (
+    <button
+      title={title}
+      onClick={disabled ? undefined : onClick}
+      className={`inline-flex items-center justify-center w-7 h-7 rounded border mr-1 ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  );
+
+  const EyeIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" strokeWidth="1.5" />
+      <circle cx="12" cy="12" r="3" strokeWidth="1.5" />
+    </svg>
+  );
+  const FileIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" strokeWidth="1.5" />
+      <path d="M14 2v6h6" strokeWidth="1.5" />
+    </svg>
+  );
+  const SendIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+      <path d="M22 2 11 13" strokeWidth="1.5" />
+      <path d="M22 2 15 22l-4-9-9-4Z" strokeWidth="1.5" />
+    </svg>
+  );
+  const ReturnIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+      <path d="M9 7 4 12l5 5" strokeWidth="1.5" />
+      <path d="M4 12h10a5 5 0 0 1 0 10h-3" strokeWidth="1.5" />
+    </svg>
+  );
+  const TrashIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+      <path d="M3 6h18" strokeWidth="1.5" />
+      <path d="M8 6V4h8v2" strokeWidth="1.5" />
+      <path d="M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14" strokeWidth="1.5" />
+    </svg>
+  );
+
   return (
     <div className="p-6 space-y-4">
-      <h1 className="text-xl font-semibold">Venda • Consultar pedidos</h1>
-      <div className="text-sm text-gray-600">Listagem de pedidos criados pela rotina de Inclusão de Pedidos.</div>
+      <h1 className="text-xl font-semibold">Venda • Consulta de Pedidos</h1>
+      <div className="text-sm text-gray-600">Listagem de pedidos gerenciados pela rotina de Manutenção de Pedidos.</div>
 
       {/* Filtros */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-gray-50 p-3 rounded border border-gray-200">
         <div>
           <label className="text-xs text-gray-600">Buscar (Número ou Cliente)</label>
-          <input className="w-full mt-1 px-2 py-1.5 border rounded" placeholder="Ex.: PED-0001 ou João" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="w-full mt-1 px-2 py-1.5 border rounded" placeholder="Ex: PED-0001 ou João" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <div>
           <label className="text-xs text-gray-600">Situação</label>
           <select className="w-full mt-1 px-2 py-1.5 border rounded" value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">Todas</option>
-            <option value="OPEN">Não finalizado</option>
-            <option value="FINALIZED">Faturado/Finalizado</option>
-            <option value="CANCELLED">Cancelado</option>
+            <option value="Orçamento">Orçamento</option>
+            <option value="Aguardando Integração">Aguardando Integração</option>
+            <option value="Erro na integração">Erro na integração</option>
+            <option value="Integrado">Integrado</option>
+            <option value="Em fila produção">Em fila produção</option>
+            <option value="Em produção">Em produção</option>
+            <option value="Produzido/Estocado">Produzido/Estocado</option>
+            <option value="Faturado">Faturado</option>
+            <option value="Cancelado">Cancelado</option>
           </select>
         </div>
         <div>
@@ -106,7 +162,10 @@ export default function SalesOrdersPage() {
       <div className="bg-white rounded border border-gray-200 overflow-hidden">
         <div className="px-3 py-2 border-b bg-gray-50 text-sm text-gray-700 flex items-center">
           <span>Listagem de pedidos</span>
-          <span className="ml-auto text-xs text-gray-500">{filtered.length} registro(s)</span>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-gray-500">{filtered.length} registro(s)</span>
+            <a href="/sales/orders/new" className="px-3 py-1.5 text-xs border rounded bg-white hover:bg-gray-100">Novo Pedido</a>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -135,7 +194,41 @@ export default function SalesOrdersPage() {
                   <td className="px-3 py-2 text-right">{(o.total ?? 0).toLocaleString(undefined, { style: 'currency', currency: 'BRL' })}</td>
                   <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded text-xs ${statusColor(o.status)}`}>{o.status || '-'}</span></td>
                   <td className="px-3 py-2 text-center">
-                    <button className="px-2 py-1 text-xs border rounded hover:bg-gray-100" onClick={() => setSelected(o)}>Ver itens</button>
+                    <div className="inline-flex">
+                      <IconBtn title="Visualizar" onClick={() => setSelected(o)}><EyeIcon /></IconBtn>
+                      <IconBtn title="Detalhes" onClick={() => { window.location.href = `/sales/orders/${o.id}`; }}> <FileIcon /> </IconBtn>
+                      {o.status === 'Aguardando Integração' ? (
+                        <IconBtn title="Retornar para Orçamento" onClick={async () => {
+                          try {
+                            const r = await fetch(`/api/sales/orders/${o.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Orçamento' }) });
+                            if (!r.ok) throw new Error('Falha ao atualizar status');
+                            const updated = await r.json();
+                            setOrders((prev) => prev.map((so) => so.id === o.id ? { ...so, status: updated.status } : so));
+                          } catch (e: any) { alert(e?.message || String(e)); }
+                        }}>
+                          <ReturnIcon />
+                        </IconBtn>
+                      ) : (
+                        <IconBtn title="Enviar para o ERP" onClick={async () => {
+                          try {
+                            const r = await fetch(`/api/sales/orders/${o.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Aguardando Integração' }) });
+                            if (!r.ok) throw new Error('Falha ao atualizar status');
+                            const updated = await r.json();
+                            setOrders((prev) => prev.map((so) => so.id === o.id ? { ...so, status: updated.status } : so));
+                          } catch (e: any) { alert(e?.message || String(e)); }
+                        }}> <SendIcon /> </IconBtn>
+                      )}
+                      <IconBtn title="Excluir" disabled={o.status !== 'Orçamento'} onClick={async () => {
+                        if (!confirm('Confirma excluir este pedido?')) return;
+                        try {
+                          const r = await fetch(`/api/sales/orders/${o.id}`, { method: 'DELETE' });
+                          if (!r.ok) throw new Error('Falha ao excluir pedido');
+                          setOrders((prev) => prev.filter((so) => so.id !== o.id));
+                        } catch (e: any) { alert(e?.message || String(e)); }
+                      }}>
+                        <TrashIcon />
+                      </IconBtn>
+                    </div>
                   </td>
                 </tr>
               ))}

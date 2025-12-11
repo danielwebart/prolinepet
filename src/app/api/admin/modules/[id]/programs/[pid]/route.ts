@@ -74,15 +74,23 @@ export async function PUT(request: Request, { params }: { params: { id: string; 
     if (!programId || Number.isNaN(programId)) return NextResponse.json({ error: 'ID de programa inválido' }, { status: 400 });
 
     const body = await request.json();
-    const name = String(body.name || '').trim();
-    const description = body.description ? String(body.description).trim() : null;
-    if (!name) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 });
+    const name = typeof body.name === 'string' ? String(body.name).trim() : undefined;
+    const description = body.description !== undefined ? (body.description ? String(body.description).trim() : null) : undefined;
+    const showInMenu = body.showInMenu === undefined ? undefined : (body.showInMenu === true);
+    if (name === undefined && description === undefined && showInMenu === undefined) {
+      return NextResponse.json({ error: 'Nenhum campo para atualizar' }, { status: 400 });
+    }
 
     const prog: any[] = await prisma.$queryRawUnsafe(`SELECT "id", "moduleId" FROM "Program" WHERE "id"=${programId} LIMIT 1`);
     if (prog.length === 0) return NextResponse.json({ error: 'Programa não encontrado' }, { status: 404 });
     if (Number(prog[0].moduleId) !== moduleId) return NextResponse.json({ error: 'Programa não pertence ao módulo informado' }, { status: 400 });
 
-    await prisma.$executeRawUnsafe(`UPDATE "Program" SET "name"='${name.replace(/'/g, "''")}', "description"=${description ? `'${description.replace(/'/g, "''")}'` : 'NULL'} WHERE "id"=${programId}`);
+    const sets: string[] = [];
+    if (name !== undefined) sets.push(`"name"='${name.replace(/'/g, "''")}'`);
+    if (description !== undefined) sets.push(`"description"=${description !== null ? `'${String(description).replace(/'/g, "''")}'` : 'NULL'}`);
+    if (showInMenu !== undefined) sets.push(`"showInMenu"=${showInMenu ? 'TRUE' : 'FALSE'}`);
+    const sql = `UPDATE "Program" SET ${sets.join(', ')} WHERE "id"=${programId}`;
+    await prisma.$executeRawUnsafe(sql);
     return NextResponse.json({ ok: true, id: programId });
   } catch (err: any) {
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });

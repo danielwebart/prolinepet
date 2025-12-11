@@ -1,6 +1,5 @@
 # Node/Next.js
 node_modules/
-.next/
 .turbo/
 .vercel/
 
@@ -27,4 +26,3 @@ prisma/.env
 # Build artifacts
 dist/
 out/
-

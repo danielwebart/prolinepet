@@ -149,6 +149,7 @@ model Program {
   name                     String
   description              String?
   isActive                 Boolean                   @default(true)
+  showInMenu               Boolean                   @default(true)
   entityModulePrograms     EntityModuleProgram[]
   module                   Module                    @relation(fields: [moduleId], references: [id])
   userEntityModulePrograms UserEntityModuleProgram[]

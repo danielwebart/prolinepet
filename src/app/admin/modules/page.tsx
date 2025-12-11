@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 type ModuleItem = { id: number; code: string; name: string; description?: string | null };
-type ProgramItem = { id: number; code: string; name: string; description?: string | null };
+type ProgramItem = { id: number; code: string; name: string; description?: string | null; showInMenu?: boolean };
 
 export default function AdminModulesPage() {
   const [modules, setModules] = useState<ModuleItem[]>([]);
@@ -174,13 +174,13 @@ export default function AdminModulesPage() {
                   onClick={() => {
                     const p = programs.find(pp => pp.id === selectedProgramId);
                     if (!p) return;
-                    setEditingProgram(true);
-                    setProgCode(p.code || '');
-                    setProgName(p.name || '');
-                    setProgDesc(p.description || '');
-                  }}
-                  className="text-xs px-2 py-1 border rounded"
-                >Editar</button>
+                  setEditingProgram(true);
+                  setProgCode(p.code || '');
+                  setProgName(p.name || '');
+                  setProgDesc(p.description || '');
+                }}
+                className="text-xs px-2 py-1 border rounded"
+              >Editar</button>
               )}
               <button
                 onClick={deleteProgram}
@@ -194,12 +194,34 @@ export default function AdminModulesPage() {
           </div>
           <div className="space-y-2">
             {programs.map(p => (
-              <button key={p.id} onClick={() => setSelectedProgramId(p.id)} className={`w-full text-left flex items-center justify-between gap-2 px-2 py-1 border rounded ${selectedProgramId===p.id?'bg-blue-50 border-blue-200':'hover:bg-gray-50'}`}>
-                <div>
+              <div key={p.id} className={`w-full flex items-center justify-between gap-2 px-2 py-1 border rounded ${selectedProgramId===p.id?'bg-blue-50 border-blue-200':'hover:bg-gray-50'}`}>
+                <button onClick={() => setSelectedProgramId(p.id)} className="text-left flex-1">
                   <div className="text-sm font-medium">{p.name}</div>
                   <div className="text-xs text-gray-500">{p.code}</div>
-                </div>
-              </button>
+                </button>
+                <label className="flex items-center gap-1 text-xs" title="Controle de exibição no menu">
+                  <input
+                    type="checkbox"
+                    checked={p.showInMenu !== false}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={async (e) => {
+                      try {
+                        const res = await fetch(`/api/admin/modules/${selectedModuleId}/programs/${p.id}`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ showInMenu: e.target.checked })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
+                        await loadPrograms(Number(selectedModuleId));
+                      } catch (err: any) {
+                        setErr(err?.message || String(err));
+                      }
+                    }}
+                  />
+                  <span>Exibe Menu</span>
+                </label>
+              </div>
             ))}
             {programs.length === 0 && <div className="text-sm text-gray-500">Selecione um módulo</div>}
           </div>
