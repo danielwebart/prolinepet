@@ -1,0 +1,77 @@
+import { NextResponse } from 'next/server';
+import { prisma } from '../../../lib/prisma';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../../lib/auth';
+
+export async function GET(request: Request) {
+  try {
+    const url = new URL(request.url);
+    const modsParam = url.searchParams.get('moduleIds');
+    const selectedModuleIds = (modsParam || '')
+      .split(',')
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isFinite(n) && n > 0);
+
+    if (selectedModuleIds.length > 0) {
+      const session = await getServerSession(authOptions);
+      const activeEntityId: number | null = (session as any)?.activeEntityId ?? null;
+      if (!activeEntityId) return NextResponse.json([]);
+
+      const ems = await prisma.entityModule.findMany({
+        where: { entityId: activeEntityId, moduleId: { in: selectedModuleIds } },
+        select: { id: true },
+      });
+      const emIds = ems.map((e) => e.id);
+      if (emIds.length === 0) return NextResponse.json([]);
+
+      const links = await prisma.entityModuleItem.findMany({
+        where: { entityModuleId: { in: emIds }, allowed: true },
+        select: { inventoryItemId: true },
+      });
+      const itemIds = Array.from(new Set(links.map((l) => l.inventoryItemId)));
+      if (itemIds.length === 0) return NextResponse.json([]);
+
+      const items = await prisma.inventoryItem.findMany({
+        where: { id: { in: itemIds } },
+        include: { commercialFamily: true },
+      });
+      return NextResponse.json(items);
+    }
+
+    const items = await prisma.inventoryItem.findMany({ include: { commercialFamily: true } });
+    return NextResponse.json(items);
+  } catch (err: any) {
+    return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  const body = await request.json();
+  const data: any = { name: String(body.name || '').trim() };
+  if (body.sku !== undefined) data.sku = String(body.sku || '').trim();
+  if (body.unit !== undefined) data.unit = String(body.unit || '').trim();
+  if (body.commercialFamilyId !== undefined) {
+    const cfidNum = Number(body.commercialFamilyId);
+    if (Number.isFinite(cfidNum) && cfidNum > 0) {
+      const exists = await prisma.commercialFamily.findUnique({ where: { id: cfidNum } });
+      data.commercialFamilyId = exists ? cfidNum : null;
+    } else {
+      data.commercialFamilyId = null;
+    }
+  }
+  const created = await prisma.inventoryItem.create({ data });
+  return NextResponse.json(created, { status: 201 });
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const ids: number[] = Array.isArray(body?.ids) ? body.ids.map((n: any) => Number(n)).filter((n) => Number.isFinite(n) && n > 0) : [];
+    if (ids.length === 0) return NextResponse.json({ error: 'IDs obrigatórios' }, { status: 400 });
+    await prisma.entityModuleItem.deleteMany({ where: { inventoryItemId: { in: ids } } });
+    const result = await prisma.inventoryItem.deleteMany({ where: { id: { in: ids } } });
+    return NextResponse.json({ deleted: result.count });
+  } catch (err: any) {
+    return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
+  }
+}

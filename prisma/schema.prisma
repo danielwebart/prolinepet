@@ -1,0 +1,386 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 Int             @id @default(autoincrement())
+  email              String          @unique
+  name               String
+  password           String
+  salesRepAdmin      Boolean         @default(false)
+  doc                String?         @unique
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  lastEntityId       Int?
+  complaintsCreated  Complaint[]
+  salesOrdersCreated SalesOrder[]
+  lastEntity         Entity?         @relation("UserLastEntity", fields: [lastEntityId], references: [id])
+  userClientReps     UserClientRep[]
+  userEntities       UserEntity[]
+  assignedWorkOrders WorkOrder[]
+}
+
+model Asset {
+  id           Int               @id @default(autoincrement())
+  name         String
+  code         String?           @unique
+  location     String?
+  description  String?
+  manufacturer String?
+  model        String?
+  year         Int?
+  criticality  String?
+  parentId     Int?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  parent       Asset?            @relation("AssetChildren", fields: [parentId], references: [id])
+  children     Asset[]           @relation("AssetChildren")
+  photos       AssetAttachment[]
+  workOrders   WorkOrder[]
+}
+
+model InventoryItem {
+  id              Int              @id @default(autoincrement())
+  name            String
+  sku             String?          @unique
+  quantity        Int              @default(0)
+  unit            String?
+  minStock        Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  salesOrderItems SalesOrderItem[]
+  // Relação opcional com Família Comercial
+  commercialFamilyId Int?
+  commercialFamily   CommercialFamily? @relation(fields: [commercialFamilyId], references: [id])
+
+  // Disponibilidade por entidade/módulo
+  entityModuleItems  EntityModuleItem[]
+}
+
+model Attachment {
+  id          Int       @id @default(autoincrement())
+  fileName    String
+  url         String
+  mimeType    String?
+  uploadedAt  DateTime  @default(now())
+  workOrderId Int
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+}
+
+model AssetAttachment {
+  id         Int      @id @default(autoincrement())
+  fileName   String
+  url        String
+  mimeType   String?
+  uploadedAt DateTime @default(now())
+  assetId    Int
+  asset      Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+}
+
+model WorkOrder {
+  id                       Int          @id @default(autoincrement())
+  title                    String
+  description              String?
+  status                   String       @default("OPEN")
+  assetId                  Int?
+  rootAssetId              Int?
+  scheduledAt              DateTime?
+  sector                   String?
+  maintenanceType          String?
+  openedAt                 DateTime?
+  assetCondition           String?
+  personnelCount           Int?
+  estimatedDurationMinutes Int?
+  tasks                    String?
+  materials                String?
+  startedAt                DateTime?
+  completedAt              DateTime?
+  closedAt                 DateTime?
+  mttr                     Int?
+  assignedUserId           Int?
+  usedEquipment            String?
+  maintainedComponents     String?
+  executionDescription     String?
+  observations             String?
+  technicianSignature      String?
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+  attachments              Attachment[]
+  asset                    Asset?       @relation(fields: [assetId], references: [id])
+  assignedTo               User?        @relation(fields: [assignedUserId], references: [id])
+}
+
+model Entity {
+  id              Int            @id @default(autoincrement())
+  cnpj            String         @unique
+  name            String
+  isActive        Boolean        @default(true)
+  parentId        Int?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  complaints      Complaint[]
+  parent          Entity?        @relation("EntityHierarchy", fields: [parentId], references: [id])
+  children        Entity[]       @relation("EntityHierarchy")
+  entityModules   EntityModule[]
+  usersLastEntity User[]         @relation("UserLastEntity")
+  userEntities    UserEntity[]
+}
+
+model Module {
+  id                Int                @id @default(autoincrement())
+  code              String             @unique
+  name              String
+  description       String?
+  isActive          Boolean            @default(true)
+  entityModules     EntityModule[]
+  programs          Program[]
+  userEntityModules UserEntityModule[]
+}
+
+model Program {
+  id                       Int                       @id @default(autoincrement())
+  moduleId                 Int
+  code                     String                    @unique
+  name                     String
+  description              String?
+  isActive                 Boolean                   @default(true)
+  entityModulePrograms     EntityModuleProgram[]
+  module                   Module                    @relation(fields: [moduleId], references: [id])
+  userEntityModulePrograms UserEntityModuleProgram[]
+}
+
+model EntityModule {
+  id       Int                   @id @default(autoincrement())
+  entityId Int
+  moduleId Int
+  entity   Entity                @relation(fields: [entityId], references: [id])
+  module   Module                @relation(fields: [moduleId], references: [id])
+  programs EntityModuleProgram[]
+  // Itens liberados para este EntityModule
+  itemLinks EntityModuleItem[]
+
+  @@unique([entityId, moduleId])
+}
+
+model EntityModuleProgram {
+  id             Int          @id @default(autoincrement())
+  entityModuleId Int
+  programId      Int
+  allowed        Boolean      @default(true)
+  entityModule   EntityModule @relation(fields: [entityModuleId], references: [id])
+  program        Program      @relation(fields: [programId], references: [id])
+
+  @@unique([entityModuleId, programId])
+}
+
+model UserEntity {
+  id       Int                @id @default(autoincrement())
+  userId   Int
+  entityId Int
+  entity   Entity             @relation(fields: [entityId], references: [id])
+  user     User               @relation(fields: [userId], references: [id])
+  modules  UserEntityModule[]
+
+  @@unique([userId, entityId])
+}
+
+model UserEntityModule {
+  id           Int                       @id @default(autoincrement())
+  userEntityId Int
+  moduleId     Int
+  allowed      Boolean                   @default(true)
+  module       Module                    @relation(fields: [moduleId], references: [id])
+  userEntity   UserEntity                @relation(fields: [userEntityId], references: [id])
+  programs     UserEntityModuleProgram[]
+
+  @@unique([userEntityId, moduleId])
+}
+
+model UserEntityModuleProgram {
+  id                 Int              @id @default(autoincrement())
+  userEntityModuleId Int
+  programId          Int
+  allowed            Boolean          @default(true)
+  program            Program          @relation(fields: [programId], references: [id])
+  userEntityModule   UserEntityModule @relation(fields: [userEntityModuleId], references: [id])
+
+  @@unique([userEntityModuleId, programId])
+}
+
+model SalesOrder {
+  id            Int              @id @default(autoincrement())
+  code          String           @unique
+  status        String           @default("OPEN")
+  orderDate     DateTime         @default(now())
+  customerName  String
+  customerDoc   String?
+  paymentTerms  String?
+  carrier       String?
+  deliveryDate  DateTime?
+  notes         String?
+  createdById   Int?
+  subtotal      Float            @default(0)
+  discountTotal Float            @default(0)
+  total         Float            @default(0)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  createdBy     User?            @relation(fields: [createdById], references: [id])
+  items         SalesOrderItem[]
+}
+
+model SalesOrderItem {
+  id              Int            @id @default(autoincrement())
+  orderId         Int
+  inventoryItemId Int?
+  sku             String?
+  name            String
+  quantity        Int            @default(1)
+  unit            String?
+  unitPrice       Float          @default(0)
+  discountPct     Float          @default(0)
+  lineTotal       Float          @default(0)
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  order           SalesOrder     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+// Ligação de disponibilidade de Item por EntityModule
+model EntityModuleItem {
+  id              Int            @id @default(autoincrement())
+  entityModuleId  Int
+  inventoryItemId Int
+  allowed         Boolean        @default(true)
+  entityModule    EntityModule   @relation(fields: [entityModuleId], references: [id])
+  inventoryItem   InventoryItem  @relation(fields: [inventoryItemId], references: [id])
+
+  @@unique([entityModuleId, inventoryItemId])
+}
+
+model Client {
+  id         Int             @id @default(autoincrement())
+  doc        String?         @unique
+  name       String
+  cep        String?
+  logradouro String?
+  numero     String?
+  bairro     String?
+  cidade     String?
+  estado     String?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  reps       UserClientRep[]
+
+  @@index([name])
+  @@index([cidade, estado])
+}
+
+model UserClientRep {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  clientId  Int
+  createdAt DateTime @default(now())
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clientId])
+}
+
+model Complaint {
+  id                  Int             @id @default(autoincrement())
+  code                String?         @unique
+  entityId            Int
+  createdById         Int?
+  division            String?
+  type                String?
+  phase               String?
+  dueDate             DateTime?
+  canceled            Boolean         @default(false)
+  cancelReason        String?
+  dateSac             DateTime?
+  dateReceived        DateTime?
+  counterpartyType    String?
+  counterpartyCode    String?
+  counterpartyName    String?
+  city                String?
+  uf                  String?
+  contactName         String?
+  contactPhone        String?
+  contactEmail        String?
+  representativeName  String?
+  representativeEmail String?
+  carrier             String?
+  freightType         String?
+  attendant           String?
+  reference           String?
+  classification      String?
+  occurrencePattern   String?
+  occurrenceCode      String?
+  occurrenceText      String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  createdBy           User?           @relation(fields: [createdById], references: [id])
+  entity              Entity          @relation(fields: [entityId], references: [id])
+  items               ComplaintItem[]
+}
+
+model ComplaintItem {
+  id                Int       @id @default(autoincrement())
+  complaintId       Int
+  invoiceNumber     String?
+  sft               String?
+  orderNumber       String?
+  spd               String?
+  emissionDate      DateTime?
+  description       String?
+  uom               String?
+  unitPrice         Float     @default(0)
+  qtyInvoiced       Float     @default(0)
+  divergenceQty     Float     @default(0)
+  divergenceValue   Float     @default(0)
+  divergencePercent Float     @default(0)
+  totalPercent      Float     @default(0)
+  complaint         Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+}
+
+model CommercialFamily {
+  id          Int       @id @default(autoincrement())
+  description String
+  createdAt   DateTime? @default(now()) @db.Timestamp(6)
+  updatedAt   DateTime? @db.Timestamp(6)
+  // Itens relacionados
+  inventoryItems InventoryItem[]
+
+  @@index([description])
+}
+
+model PaymentTerm {
+  id           Int       @id @default(autoincrement())
+  code         Int?      @unique
+  description  String
+  installments Int?      @default(1)
+  createdAt    DateTime? @default(now()) @db.Timestamp(6)
+  updatedAt    DateTime? @db.Timestamp(6)
+
+  @@index([description])
+}
+
+model sessions {
+  token      String    @id @db.VarChar(64)
+  user_id    Int
+  expires    DateTime  @db.Timestamptz(6)
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model users {
+  id            Int        @id @default(autoincrement())
+  email         String     @unique(map: "users_email_idx") @db.VarChar(255)
+  name          String     @db.VarChar(255)
+  password_hash String     @db.VarChar(255)
+  created_at    DateTime?  @default(now()) @db.Timestamptz(6)
+  sessions      sessions[]
+}
