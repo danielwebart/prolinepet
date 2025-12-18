@@ -44,6 +44,96 @@ type SalesOrder = {
 
 const ICON_BTN = "inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700";
 
+const minChars = 1;
+
+const AsyncSelect = ({ 
+  label, 
+  value, 
+  onChange, 
+  onSelectObj,
+  fetchUrl, 
+  placeholder,
+  renderOption,
+  getLabel,
+  onBlur
+}: { 
+  label: string; 
+  value: string; 
+  onChange: (val: string) => void;
+  onSelectObj?: (obj: any) => void;
+  fetchUrl: (q: string) => string; 
+  placeholder?: string;
+  renderOption: (item: any) => React.ReactNode;
+  getLabel: (item: any) => string;
+  onBlur?: () => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [opts, setOpts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleSearch = async (q: string) => {
+    onChange(q);
+    if (q.length < minChars) { setOpts([]); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(fetchUrl(q));
+      if (res.ok) {
+        const data = await res.json();
+        setOpts(Array.isArray(data) ? data : []);
+        setOpen(true);
+      }
+    } catch { } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="relative" ref={wrapperRef}>
+      <span className="text-gray-600">{label}</span>
+      <input 
+        className="mt-1 w-full px-2 py-1 border rounded" 
+        value={value} 
+        onChange={(e) => handleSearch(e.target.value)}
+        onBlur={onBlur}
+        onFocus={() => { 
+           if (value.length >= minChars && opts.length === 0) {
+             handleSearch(value);
+           }
+           setOpen(true); 
+        }}
+        placeholder={placeholder}
+      />
+      {open && opts.length > 0 && (
+        <ul className="absolute z-50 w-full bg-white border rounded shadow-lg max-h-60 overflow-auto mt-1">
+          {opts.map((item, idx) => (
+            <li 
+              key={idx} 
+              className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+              onClick={() => {
+                const txt = getLabel(item);
+                onChange(txt);
+                if (onSelectObj) onSelectObj(item);
+                setOpen(false);
+              }}
+            >
+              {renderOption(item)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
 function familyName(it: OrderItem): string {
   let fam = (it.inventoryItem?.commercialFamily?.name || '').trim();
   if (!fam) {
@@ -133,12 +223,74 @@ export default function SalesOrderMaintenancePage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draft, setDraft] = useState<Partial<OrderItem>>({});
   const [showFeaturesFor, setShowFeaturesFor] = useState<number | null>(null);
-  const [hdrDraft, setHdrDraft] = useState<{ paymentTerms?: string; deliveryDate?: string }>({});
+  const [hdrDraft, setHdrDraft] = useState<{ paymentTerms?: string; deliveryDate?: string; customerName?: string; customerDoc?: string }>({});
+  const [isHeaderEditing, setIsHeaderEditing] = useState(false);
   const [addingItems, setAddingItems] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<InventoryItem[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+
+  const searchClientItems = async (term: string) => {
+    if (!term) {
+      setSearchResults([]);
+      return;
+    }
+    
+    setSearchLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('q', term);
+      
+      const res = await fetch(`/api/items?${params.toString()}`);
+      if (res.ok) {
+        let data = await res.json();
+        
+        const lower = term.toLowerCase();
+        data = data.filter((it: any) => 
+          it.name.toLowerCase().includes(lower) || 
+          (it.sku && it.sku.toLowerCase().includes(lower))
+        );
+        
+        setSearchResults(data.slice(0, 20));
+      }
+    } catch (e) {
+      console.error(e);
+      setSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const addItemToOrder = async (item: InventoryItem) => {
+    if (!order) return;
+    try {
+      const payload = {
+        orderId: order.id,
+        inventoryItemId: item.id,
+        name: item.name,
+        sku: item.sku,
+        unit: item.unit,
+        quantity: 1,
+        unitPrice: 0, 
+        discountPct: 0
+      };
+      
+      const res = await fetch('/api/sales/orders/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      if (!res.ok) throw new Error('Falha ao adicionar item');
+      
+      setAddingItems(false);
+      setSearchTerm('');
+      await refreshOrder();
+    } catch (e: any) {
+      alert(e?.message || String(e));
+    }
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -149,7 +301,9 @@ export default function SalesOrderMaintenancePage() {
         setOrder(data);
         setHdrDraft({
           paymentTerms: data.paymentTerms || '',
-          deliveryDate: data.deliveryDate ? new Date(data.deliveryDate).toISOString().slice(0,10) : ''
+          deliveryDate: data.deliveryDate ? new Date(data.deliveryDate).toISOString().slice(0,10) : '',
+          customerName: data.customerName || '',
+          customerDoc: data.customerDoc || ''
         });
       } catch (e: any) {
         setError(e?.message || String(e));
@@ -179,7 +333,7 @@ export default function SalesOrderMaintenancePage() {
     return 0;
   };
 
-  const saveHeader = async (partial: { paymentTerms?: string; deliveryDate?: string }) => {
+  const saveHeader = async (partial: { paymentTerms?: string; deliveryDate?: string; customerName?: string; customerDoc?: string }) => {
     if (!order) return;
     try {
       const res = await fetch(`/api/sales/orders/${order.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(partial) });
@@ -188,8 +342,11 @@ export default function SalesOrderMaintenancePage() {
       setOrder(updated);
       setHdrDraft({
         paymentTerms: updated.paymentTerms || '',
-        deliveryDate: updated.deliveryDate ? new Date(updated.deliveryDate).toISOString().slice(0,10) : ''
+        deliveryDate: updated.deliveryDate ? new Date(updated.deliveryDate).toISOString().slice(0,10) : '',
+        customerName: updated.customerName || '',
+        customerDoc: updated.customerDoc || ''
       });
+      setIsHeaderEditing(false);
     } catch (e: any) { alert(e?.message || String(e)); }
   };
 
@@ -288,18 +445,49 @@ export default function SalesOrderMaintenancePage() {
                   <span className="text-gray-600">Data</span>
                   <div className="mt-1">{new Date(order.orderDate).toLocaleDateString('pt-BR')}</div>
                 </div>
-                <div>
-                  <span className="text-gray-600">Cliente</span>
-                  <input className="mt-1 w-full px-2 py-1 border rounded" value={order.customerName} readOnly />
+                <div className={!isHeaderEditing ? "opacity-75 pointer-events-none" : ""}>
+                   <AsyncSelect
+                      label="Cliente"
+                      value={hdrDraft.customerName ?? ''}
+                      onChange={(val) => setHdrDraft((d) => ({ ...d, customerName: val }))}
+                      onSelectObj={(item) => {
+                         setHdrDraft((d) => ({ ...d, customerName: item.name, customerDoc: item.document }));
+                      }}
+                      fetchUrl={(q) => `/api/base/clients?q=${q}`}
+                      placeholder="Pesquise por nome ou documento"
+                      getLabel={(item) => item.name}
+                      renderOption={(item) => (
+                        <div>
+                          <div className="font-medium">{item.name}</div>
+                          <div className="text-xs text-gray-500">{item.document}</div>
+                        </div>
+                      )}
+                    />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <span className="text-gray-600">Condição de pagamento</span>
-                    <input className="mt-1 w-full px-2 py-1 border rounded" placeholder="Digite descrição ou código" value={hdrDraft.paymentTerms ?? ''} onChange={(e) => setHdrDraft((d) => ({ ...d, paymentTerms: e.target.value }))} onBlur={() => saveHeader({ paymentTerms: hdrDraft.paymentTerms || '' })} />
+                  <div className={!isHeaderEditing ? "opacity-75 pointer-events-none" : ""}>
+                    <AsyncSelect
+                      label="Condição de pagamento"
+                      value={hdrDraft.paymentTerms ?? ''}
+                      onChange={(val) => setHdrDraft((d) => ({ ...d, paymentTerms: val }))}
+                      onSelectObj={(item) => {
+                         const newVal = `[${item.code}] ${item.description}`;
+                         setHdrDraft((d) => ({ ...d, paymentTerms: newVal }));
+                      }}
+                      fetchUrl={(q) => `/api/base/payment-terms?q=${q}`}
+                      placeholder="Digite código ou descrição"
+                      getLabel={(item) => `[${item.code}] ${item.description}`}
+                      renderOption={(item) => (
+                        <div>
+                          <div className="font-medium">{item.description}</div>
+                          <div className="text-xs text-gray-500">Código: {item.code} | Parcelas: {item.installments}</div>
+                        </div>
+                      )}
+                    />
                   </div>
                   <div>
                     <span className="text-gray-600">Entrega</span>
-                    <input type="date" className="mt-1 w-full px-2 py-1 border rounded" value={hdrDraft.deliveryDate ?? ''} onChange={(e) => setHdrDraft((d) => ({ ...d, deliveryDate: e.target.value }))} onBlur={() => saveHeader({ deliveryDate: hdrDraft.deliveryDate || '' })} />
+                    <input type="date" className="mt-1 w-full px-2 py-1 border rounded" value={hdrDraft.deliveryDate ?? ''} onChange={(e) => setHdrDraft((d) => ({ ...d, deliveryDate: e.target.value }))} disabled={!isHeaderEditing} />
                   </div>
                 </div>
                 <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -325,11 +513,11 @@ export default function SalesOrderMaintenancePage() {
                 <button className={ICON_BTN} title="Enviar para ERP" aria-label="Enviar para ERP" onClick={async () => {
                   if (!order) return;
                   try {
-                    const r = await fetch(`/api/sales/orders/${order.id}`, {
+                    const res = await fetch(`/api/sales/orders/${order.id}`, {
                       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ status: 'Aguardando Integração', messages: ['Solicitado envio ao ERP via manutenção'] })
                     });
-                    if (!r.ok) throw new Error('Falha ao enviar para ERP');
+                    if (!res.ok) throw new Error('Falha ao enviar para ERP');
                     await refreshOrder();
                   } catch (e: any) { alert(e?.message || String(e)); }
                 }}>
@@ -338,9 +526,20 @@ export default function SalesOrderMaintenancePage() {
                 <button className={ICON_BTN} title="Excluir" aria-label="Excluir" onClick={async () => { if (!order) return; if (!confirm('Confirma excluir este pedido?')) return; const r = await fetch(`/api/sales/orders/${order.id}`, { method: 'DELETE' }); if (r.ok) router.push('/sales/orders'); }}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 </button>
-                <button className={ICON_BTN} title="Editar" aria-label="Editar" onClick={() => alert('Editar cabeçalho: em desenvolvimento')}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
-                </button>
+                {isHeaderEditing ? (
+                  <>
+                    <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-green-600" title="Salvar" aria-label="Salvar" onClick={() => saveHeader({ paymentTerms: hdrDraft.paymentTerms, deliveryDate: hdrDraft.deliveryDate, customerName: hdrDraft.customerName, customerDoc: hdrDraft.customerDoc })}>
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17Z"/></svg>
+                    </button>
+                    <button className="inline-flex items-center justify-center w-8 h-8 bg-red-50 border border-red-200 rounded shadow-sm hover:bg-red-100 text-red-600" title="Cancelar" aria-label="Cancelar" onClick={() => { setIsHeaderEditing(false); setHdrDraft({ paymentTerms: order.paymentTerms || '', deliveryDate: order.deliveryDate ? new Date(order.deliveryDate).toISOString().slice(0,10) : '', customerName: order.customerName || '', customerDoc: order.customerDoc || '' }); }}>
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.41 4.29 19.71 2.88 18.3 9.17 12 2.88 5.71 4.29 4.29 10.59 10.59 16.89 4.29l1.41 1.42Z"/></svg>
+                    </button>
+                  </>
+                ) : (
+                  <button className={ICON_BTN} title="Editar" aria-label="Editar" onClick={() => setIsHeaderEditing(true)}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                  </button>
+                )}
               </div>
             </div>
           </div>

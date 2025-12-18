@@ -34,6 +34,11 @@ export async function POST(request: Request) {
         unitPrice: payload.unitPrice,
         discountPct: payload.discountPct,
         lineTotal: payload.lineTotal,
+        width: payload.width ?? null,
+        length: payload.length ?? null,
+        grammage: payload.grammage ?? null,
+        diameter: payload.diameter ?? null,
+        tube: payload.tube ?? null,
       },
     });
     return NextResponse.json(created, { status: 201 });

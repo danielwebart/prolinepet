@@ -6,6 +6,32 @@ import { authOptions } from '../../../lib/auth';
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
+    const clientIdParam = url.searchParams.get('clientId');
+    const qParam = url.searchParams.get('q');
+
+    if (clientIdParam) {
+      const cId = Number(clientIdParam);
+      const links = await prisma.clientItem.findMany({
+        where: { clientId: cId, allowed: true },
+        include: { 
+          inventoryItem: {
+            include: { commercialFamily: true }
+          } 
+        }
+      });
+      
+      let items = links.map(l => l.inventoryItem);
+      
+      if (qParam) {
+        const lower = qParam.toLowerCase();
+        items = items.filter(it => 
+          it.name.toLowerCase().includes(lower) || 
+          (it.sku && it.sku.toLowerCase().includes(lower))
+        );
+      }
+      return NextResponse.json(items);
+    }
+
     const modsParam = url.searchParams.get('moduleIds');
     const selectedModuleIds = (modsParam || '')
       .split(',')
@@ -38,7 +64,17 @@ export async function GET(request: Request) {
       return NextResponse.json(items);
     }
 
-    const items = await prisma.inventoryItem.findMany({ include: { commercialFamily: true } });
+    const where: any = {};
+    if (qParam) {
+      where.OR = [
+        { name: { contains: qParam, mode: 'insensitive' } },
+        { sku: { contains: qParam, mode: 'insensitive' } }
+      ];
+    }
+    const items = await prisma.inventoryItem.findMany({ 
+      where,
+      include: { commercialFamily: true } 
+    });
     return NextResponse.json(items);
   } catch (err: any) {
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });

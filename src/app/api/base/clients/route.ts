@@ -29,7 +29,8 @@ export async function GET(request: Request) {
 
     // Query filtrando por UserClientRep
     const sql = `
-      SELECT c."id", c."doc", c."name", c."cep", c."logradouro", c."numero", c."bairro", c."cidade", c."estado" 
+      SELECT c."id", c."doc", c."name", c."cep", c."logradouro", c."numero", c."bairro", c."cidade", c."estado",
+             c."creditLimit", c."availableLimit", c."titlesDue", c."titlesOverdue"
       FROM "Client" c
       INNER JOIN "UserClientRep" ucr ON c."id" = ucr."clientId"
       WHERE ucr."userId" = ${userId}

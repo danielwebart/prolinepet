@@ -43,11 +43,11 @@ export async function POST(request: Request) {
     items,
   } = body || {};
 
-  if (!customerName || !Array.isArray(items) || items.length === 0) {
-    return NextResponse.json({ error: 'customerName e items são obrigatórios' }, { status: 400 });
+  if (!customerName) {
+    return NextResponse.json({ error: 'customerName é obrigatório' }, { status: 400 });
   }
 
-  const normalizedItems = items.map((it: any) => {
+  const normalizedItems = (Array.isArray(items) ? items : []).map((it: any) => {
     const qty = Number(it.quantity || 1);
     const price = Number(it.unitPrice || 0);
     const disc = Number(it.discountPct || 0);
@@ -60,6 +60,11 @@ export async function POST(request: Request) {
       unit: it.unit || undefined,
       unitPrice: price,
       discountPct: disc,
+      width: it.width ? Number(it.width) : undefined,
+      length: it.length ? Number(it.length) : undefined,
+      grammage: it.grammage ? Number(it.grammage) : undefined,
+      diameter: it.diameter ? Number(it.diameter) : undefined,
+      tube: it.tube ? Number(it.tube) : undefined,
       lineTotal,
     };
   });

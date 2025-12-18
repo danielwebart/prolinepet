@@ -2,7 +2,21 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-type Client = { id: number; doc?: string | null; name: string; cep?: string | null; logradouro?: string | null; numero?: string | null; bairro?: string | null; cidade?: string | null; estado?: string | null };
+type Client = { 
+  id: number; 
+  doc?: string | null; 
+  name: string; 
+  cep?: string | null; 
+  logradouro?: string | null; 
+  numero?: string | null; 
+  bairro?: string | null; 
+  cidade?: string | null; 
+  estado?: string | null;
+  creditLimit?: number;
+  availableLimit?: number;
+  titlesDue?: number;
+  titlesOverdue?: number;
+};
 type OrderItem = { id: number; sku?: string | null; name: string; unit?: string | null; quantity: number; unitPrice: number; discountPct: number };
 type SalesOrder = { id: number; code: string; orderDate: string; customerName: string; customerDoc?: string | null; total: number; items?: OrderItem[] };
 type LinkedItem = { id: number; name: string; sku?: string | null; unit?: string | null; unitPrice?: number };
@@ -17,6 +31,7 @@ export default function ClientDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const [linkedItems, setLinkedItems] = useState<LinkedItem[]>([]);
+  const [expandItems, setExpandItems] = useState(false);
   const [showCart, setShowCart] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
@@ -131,6 +146,18 @@ export default function ClientDetailsPage() {
 
   const cartCount = cartItems.length;
 
+  const formatDoc = (doc: string | null | undefined) => {
+    if (!doc) return '-';
+    const d = doc.replace(/\D/g, '');
+    if (d.length === 11) {
+      return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    }
+    if (d.length === 14) {
+      return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+    }
+    return doc;
+  };
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
@@ -142,14 +169,25 @@ export default function ClientDetailsPage() {
       {client && (
         <div className="border rounded bg-white p-4">
           <div className="flex items-start justify-between gap-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-              <div><span className="text-gray-600">CPF/CNPJ:</span> <span className="font-medium">{client.doc || '-'}</span></div>
-              <div><span className="text-gray-600">Nome:</span> <span className="font-medium">{client.name}</span></div>
-              <div><span className="text-gray-600">Cidade:</span> <span className="font-medium">{client.cidade || '-'}</span></div>
-              <div><span className="text-gray-600">UF:</span> <span className="font-medium">{client.estado || '-'}</span></div>
+            <div className="flex flex-col xl:flex-row justify-between gap-4 flex-1 text-sm">
+              <div className="flex flex-col gap-2">
+                <div className="whitespace-nowrap"><span className="text-gray-600">CPF/CNPJ:</span> <span className="font-medium ml-1">{formatDoc(client.doc)}</span></div>
+                <div className="whitespace-nowrap"><span className="text-gray-600">Nome:</span> <span className="font-medium ml-1">{client.name}</span></div>
+                <div className="flex gap-4">
+                  <div className="whitespace-nowrap"><span className="text-gray-600">Cidade:</span> <span className="font-medium ml-1">{client.cidade || '-'}</span></div>
+                  <div className="whitespace-nowrap"><span className="text-gray-600">UF:</span> <span className="font-medium ml-1">{client.estado || '-'}</span></div>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-2">
+                <div className="whitespace-nowrap"><span className="text-gray-600">Limite Crédito Total R$:</span> <span className="font-medium ml-1">{(client.creditLimit ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>
+                <div className="whitespace-nowrap"><span className="text-gray-600">Títulos á Vencer R$:</span> <span className="font-medium ml-1">{(client.titlesDue ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>
+                <div className="whitespace-nowrap"><span className="text-gray-600">Limite Disponível Total R$:</span> <span className="font-medium ml-1">{(client.availableLimit ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>
+                <div className="whitespace-nowrap"><span className="text-gray-600">Títulos Vencidos R$:</span> <span className="font-medium text-red-600 ml-1">{(client.titlesOverdue ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>
+              </div>
             </div>
             <button
-              className="relative inline-flex items-center justify-center p-2 border rounded bg-white hover:bg-gray-50 transition-colors"
+              className="self-center relative inline-flex items-center justify-center p-2 border rounded bg-white hover:bg-gray-50 transition-colors"
               title="Carrinho do cliente"
               aria-label="Carrinho do cliente"
               onClick={() => { setShowCart((v) => !v); }}
@@ -217,7 +255,12 @@ export default function ClientDetailsPage() {
       )}
 
       <div className="border rounded bg-white">
-        <div className="p-2 text-xs text-gray-600">Pedidos do Cliente</div>
+        <div className="p-2 text-xs text-gray-600 flex items-center justify-between">
+          <span>Pedidos do Cliente</span>
+          <a href={`/sales/orders/new?customerId=${client?.id || ''}`} className="px-2 py-1 bg-white border rounded hover:bg-gray-50 text-gray-700 text-xs font-medium no-underline">
+            + Novo Pedido
+          </a>
+        </div>
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50">
@@ -242,7 +285,16 @@ export default function ClientDetailsPage() {
       </div>
 
       <div className="border rounded bg-white">
-        <div className="p-2 text-xs text-gray-600">Itens vinculados ao cliente</div>
+        <div className="flex items-center justify-between p-2">
+           <div className="text-xs text-gray-600">Itens vinculados ao cliente</div>
+           <button onClick={() => setExpandItems(!expandItems)} className="text-gray-500 hover:text-gray-700 p-1" title={expandItems ? "Recolher" : "Expandir"}>
+             {expandItems ? (
+               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+             ) : (
+               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+             )}
+           </button>
+        </div>
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50">
@@ -254,7 +306,7 @@ export default function ClientDetailsPage() {
             </tr>
           </thead>
           <tbody>
-            {linkedItems.map((it, i) => (
+            {(expandItems ? linkedItems : []).map((it, i) => (
               <tr key={i} className="border-t">
                 <td className="p-2">{it.name}</td>
                 <td className="p-2">{it.sku || '-'}</td>
@@ -269,6 +321,9 @@ export default function ClientDetailsPage() {
             ))}
             {linkedItems.length === 0 && (
               <tr><td className="p-3 text-gray-500" colSpan={5}>Sem itens</td></tr>
+            )}
+            {!expandItems && linkedItems.length > 0 && (
+               <tr><td className="p-2 text-center text-xs text-gray-500 italic" colSpan={5}>{linkedItems.length} itens ocultos...</td></tr>
             )}
           </tbody>
         </table>

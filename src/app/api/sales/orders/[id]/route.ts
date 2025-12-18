@@ -36,6 +36,12 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       const v = body.deliveryDate.trim();
       allowed.deliveryDate = v ? new Date(v) : null;
     }
+    if (typeof body.customerName === 'string') {
+      allowed.customerName = String(body.customerName);
+    }
+    if (typeof body.customerDoc === 'string') {
+      allowed.customerDoc = String(body.customerDoc);
+    }
 
     if (Object.keys(allowed).length === 0) {
       return NextResponse.json({ error: 'Nada para atualizar' }, { status: 400 });
@@ -79,3 +85,4 @@ export async function DELETE(_: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
   }
 }
+

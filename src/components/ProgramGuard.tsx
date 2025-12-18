@@ -14,7 +14,6 @@ function pathToProgramCode(pathname: string): string | null {
   if (pathname.startsWith("/settings")) return "SETTINGS";
   if (pathname.startsWith("/admin/entities")) return "ADMIN_ENTITIES";
   if (pathname.startsWith("/admin/modules")) return "ADMIN_MODULES";
-  if (pathname.startsWith("/sales/orders/new")) return "SALES_CREATE_ORDER";
   if (pathname.startsWith("/sales/orders")) return "SALES_ORDER_SEARCH";
   if (pathname.startsWith("/sales/clients")) return "SALES_CLIENT_SEARCH";
   if (pathname.startsWith("/sales/production-schedule")) return "SALES_PRODUCTION_SCHEDULE";
