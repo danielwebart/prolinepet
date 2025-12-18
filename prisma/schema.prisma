@@ -140,6 +140,7 @@ model Module {
   code              String             @unique
   name              String
   description       String?
+  showDashboardTab  Boolean            @default(false)
   isActive          Boolean            @default(true)
   entityModules     EntityModule[]
   programs          Program[]

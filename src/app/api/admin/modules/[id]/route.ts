@@ -84,10 +84,11 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const body = await request.json();
     const name = String(body.name || '').trim();
     const description = body.description ? String(body.description).trim() : null;
+    const showDashboardTab = body.showDashboardTab ? 'TRUE' : 'FALSE';
     if (!name) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 });
     const exists: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "Module" WHERE "id"=${id} LIMIT 1`);
     if (exists.length === 0) return NextResponse.json({ error: 'Módulo não encontrado' }, { status: 404 });
-    await prisma.$executeRawUnsafe(`UPDATE "Module" SET "name"='${name.replace(/'/g, "''")}', "description"=${description ? `'${description.replace(/'/g, "''")}'` : 'NULL'} WHERE "id"=${id}`);
+    await prisma.$executeRawUnsafe(`UPDATE "Module" SET "name"='${name.replace(/'/g, "''")}', "description"=${description ? `'${description.replace(/'/g, "''")}'` : 'NULL'}, "showDashboardTab"=${showDashboardTab} WHERE "id"=${id}`);
     return NextResponse.json({ ok: true, id });
   } catch (err: any) {
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });

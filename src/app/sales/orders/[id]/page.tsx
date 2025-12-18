@@ -42,7 +42,7 @@ type SalesOrder = {
   items?: OrderItem[];
 };
 
-const ICON_BTN = "inline-flex items-center justify-center w-8 h-8 border rounded hover:bg-gray-100";
+const ICON_BTN = "inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700";
 
 function familyName(it: OrderItem): string {
   let fam = (it.inventoryItem?.commercialFamily?.name || '').trim();
@@ -199,40 +199,11 @@ export default function SalesOrderMaintenancePage() {
     setOrder(data);
   };
 
-  const searchClientItems = async (q: string) => {
-    const docSafe = order?.customerDoc || '-';
-    setSearchLoading(true);
-    try {
-      const res = await fetch(`/api/clients/items/by-doc/${docSafe}?q=${encodeURIComponent(q)}`, { cache: 'no-store' });
-      const items: InventoryItem[] = await res.json();
-      setSearchResults(items);
-    } catch {}
-    finally { setSearchLoading(false); }
-  };
-
-  const addItemToOrder = async (it: InventoryItem) => {
-    if (!order) return;
-    try {
-      const res = await fetch(`/api/sales/orders/items`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: order.id,
-          inventoryItemId: it.id,
-          sku: it.sku || null,
-          name: it.name,
-          unit: it.unit || null,
-          quantity: 1,
-          unitPrice: 0,
-          discountPct: 0,
-        }),
-      });
-      if (!res.ok) throw new Error('Falha ao inserir item');
-      setAddingItems(false);
-      setSearchTerm('');
-      setSearchResults([]);
-      await refreshOrder();
-    } catch (e: any) { alert(e?.message || String(e)); }
-  };
+  const globalItems = order?.items || [];
+  const globalSubtotal = globalItems.reduce((s, it) => s + (it.quantity * it.unitPrice), 0);
+  const globalDiscount = globalItems.reduce((s, it) => s + (it.quantity * it.unitPrice * (it.discountPct / 100)), 0);
+  const globalTotalNoTax = globalSubtotal - globalDiscount;
+  const globalWeight = globalItems.reduce((s, it) => s + Math.round(computeWeightKg(it, false)), 0);
 
   const groups = useMemo(() => {
     const out = new Map<string, OrderItem[]>();
@@ -321,16 +292,36 @@ export default function SalesOrderMaintenancePage() {
                   <span className="text-gray-600">Cliente</span>
                   <input className="mt-1 w-full px-2 py-1 border rounded" value={order.customerName} readOnly />
                 </div>
-                <div>
-                  <span className="text-gray-600">Condição de pagamento</span>
-                  <input className="mt-1 w-full px-2 py-1 border rounded" placeholder="Digite descrição ou código" value={hdrDraft.paymentTerms ?? ''} onChange={(e) => setHdrDraft((d) => ({ ...d, paymentTerms: e.target.value }))} onBlur={() => saveHeader({ paymentTerms: hdrDraft.paymentTerms || '' })} />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-gray-600">Condição de pagamento</span>
+                    <input className="mt-1 w-full px-2 py-1 border rounded" placeholder="Digite descrição ou código" value={hdrDraft.paymentTerms ?? ''} onChange={(e) => setHdrDraft((d) => ({ ...d, paymentTerms: e.target.value }))} onBlur={() => saveHeader({ paymentTerms: hdrDraft.paymentTerms || '' })} />
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Entrega</span>
+                    <input type="date" className="mt-1 w-full px-2 py-1 border rounded" value={hdrDraft.deliveryDate ?? ''} onChange={(e) => setHdrDraft((d) => ({ ...d, deliveryDate: e.target.value }))} onBlur={() => saveHeader({ deliveryDate: hdrDraft.deliveryDate || '' })} />
+                  </div>
                 </div>
-                <div>
-                  <span className="text-gray-600">Entrega</span>
-                  <input type="date" className="mt-1 w-full px-2 py-1 border rounded" value={hdrDraft.deliveryDate ?? ''} onChange={(e) => setHdrDraft((d) => ({ ...d, deliveryDate: e.target.value }))} onBlur={() => saveHeader({ deliveryDate: hdrDraft.deliveryDate || '' })} />
+                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <span className="text-gray-600">Total Sem Imp R$</span>
+                    <div className="mt-1 w-full px-2 py-1 border rounded bg-gray-50 text-gray-800">{fmtCurrency(globalTotalNoTax)}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Total Com Imp R$</span>
+                    <div className="mt-1 w-full px-2 py-1 border rounded bg-gray-50 text-gray-800">{fmtCurrency(globalTotalNoTax)}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Total Peso (KG)</span>
+                    <div className="mt-1 w-full px-2 py-1 border rounded bg-gray-50 text-gray-800">{fmtInt(globalWeight)}</div>
+                  </div>
                 </div>
               </div>
               <div className="ml-auto flex gap-2">
+                <button className="flex items-center gap-1 px-3 py-1 text-sm bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" onClick={() => alert('Simulação de impostos: em desenvolvimento')}>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                  Simular Impostos
+                </button>
                 <button className={ICON_BTN} title="Enviar para ERP" aria-label="Enviar para ERP" onClick={async () => {
                   if (!order) return;
                   try {
@@ -342,13 +333,13 @@ export default function SalesOrderMaintenancePage() {
                     await refreshOrder();
                   } catch (e: any) { alert(e?.message || String(e)); }
                 }}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2 21 23 12 2 3v7l15 2-15 2v7Z"/></svg>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                 </button>
                 <button className={ICON_BTN} title="Excluir" aria-label="Excluir" onClick={async () => { if (!order) return; if (!confirm('Confirma excluir este pedido?')) return; const r = await fetch(`/api/sales/orders/${order.id}`, { method: 'DELETE' }); if (r.ok) router.push('/sales/orders'); }}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 7h12l-1 14H7L6 7Zm3-3h6l1 2H8l1-2Zm2 6v8a1 1 0 0 0 2 0V10a1 1 0 0 0-2 0Z"/></svg>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 </button>
                 <button className={ICON_BTN} title="Editar" aria-label="Editar" onClick={() => alert('Editar cabeçalho: em desenvolvimento')}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm18-11.5a1.003 1.003 0 0 0 0-1.42L18.67.97a1.003 1.003 0 0 0-1.42 0l-2.34 2.34 3.75 3.75 2.34-2.34Z"/></svg>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
                 </button>
               </div>
             </div>
@@ -497,10 +488,10 @@ export default function SalesOrderMaintenancePage() {
                               </div>
                             ) : (
                               <div className="flex items-center justify-center gap-2">
-                                <button className={ICON_BTN + ' bg-green-600 text-white hover:bg-green-700 border-green-700'} title="Salvar" aria-label="Salvar" onClick={saveEdit}>
+                                <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-green-600" title="Salvar" aria-label="Salvar" onClick={saveEdit}>
                                   <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17Z"/></svg>
                                 </button>
-                                <button className={ICON_BTN} title="Cancelar" aria-label="Cancelar" onClick={cancelEdit}>
+                                <button className="inline-flex items-center justify-center w-8 h-8 bg-red-50 border border-red-200 rounded shadow-sm hover:bg-red-100 text-red-600" title="Cancelar" aria-label="Cancelar" onClick={cancelEdit}>
                                   <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.41 4.29 19.71 2.88 18.3 9.17 12 2.88 5.71 4.29 4.29 10.59 10.59 16.89 4.29l1.41 1.42Z"/></svg>
                                 </button>
                               </div>
@@ -519,22 +510,22 @@ export default function SalesOrderMaintenancePage() {
                                       {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
                                         <div key={n} className="flex items-center gap-1">
                                           <span className="text-xs text-gray-500 w-3">{n}</span>
-                                          <input type="number" className="w-16 px-2 py-1 border rounded text-sm" placeholder="0" />
+                                          <input type="number" className="w-16 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" placeholder="0" disabled={!isEditing} />
                                         </div>
                                       ))}
                                     </div>
                                   </div>
                                   <div className="space-y-1">
                                     <label className="text-xs text-gray-600 block">Pedido Cliente</label>
-                                    <input type="text" className="w-48 px-2 py-1 border rounded text-sm" />
+                                    <input type="text" className="w-48 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" disabled={!isEditing} />
                                   </div>
                                   <div className="flex items-center gap-2 pb-2">
-                                    <input type="checkbox" id={`res-in-${it.id}`} className="rounded border-gray-300" />
-                                    <label htmlFor={`res-in-${it.id}`} className="text-sm text-gray-700">Resina interna</label>
+                                    <input type="checkbox" id={`res-in-${it.id}`} className="rounded border-gray-300 disabled:bg-gray-100" disabled={!isEditing} />
+                                    <label htmlFor={`res-in-${it.id}`} className={`text-sm ${!isEditing ? 'text-gray-500' : 'text-gray-700'}`}>Resina interna</label>
                                   </div>
                                   <div className="flex items-center gap-2 pb-2">
-                                    <input type="checkbox" id={`res-out-${it.id}`} className="rounded border-gray-300" />
-                                    <label htmlFor={`res-out-${it.id}`} className="text-sm text-gray-700">Resina externa</label>
+                                    <input type="checkbox" id={`res-out-${it.id}`} className="rounded border-gray-300 disabled:bg-gray-100" disabled={!isEditing} />
+                                    <label htmlFor={`res-out-${it.id}`} className={`text-sm ${!isEditing ? 'text-gray-500' : 'text-gray-700'}`}>Resina externa</label>
                                   </div>
                                 </div>
                               </div>
@@ -556,7 +547,7 @@ export default function SalesOrderMaintenancePage() {
                   <div className="px-3 py-2 text-xs text-gray-700 flex gap-6 justify-end border-t">
                     <span>Subtotal: {fmtCurrency(subtotal)}</span>
                     <span>Descontos: {fmtCurrency(discountTotal)}</span>
-                    <span>Total: {fmtCurrency(total)}</span>
+                    <span>Total Sem Imp R$: {fmtCurrency(total)}</span>
                     <span>Total Peso (KG): {fmtInt(totalWeight)}</span>
                   </div>
                 );

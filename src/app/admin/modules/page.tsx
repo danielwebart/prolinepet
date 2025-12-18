@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 
-type ModuleItem = { id: number; code: string; name: string; description?: string | null };
+type ModuleItem = { id: number; code: string; name: string; description?: string | null; showDashboardTab?: boolean };
 type ProgramItem = { id: number; code: string; name: string; description?: string | null; showInMenu?: boolean };
 
 export default function AdminModulesPage() {
@@ -14,6 +14,7 @@ export default function AdminModulesPage() {
   const [modCode, setModCode] = useState("");
   const [modName, setModName] = useState("");
   const [modDesc, setModDesc] = useState("");
+  const [modShowDashboard, setModShowDashboard] = useState(false);
   const [editingModule, setEditingModule] = useState(false);
   const [progCode, setProgCode] = useState("");
   const [progName, setProgName] = useState("");
@@ -46,7 +47,18 @@ export default function AdminModulesPage() {
   };
 
   useEffect(() => { loadModules(); }, []);
-  useEffect(() => { if (selectedModuleId) loadPrograms(selectedModuleId); }, [selectedModuleId]);
+  useEffect(() => {
+    if (selectedModuleId) {
+      loadPrograms(selectedModuleId);
+      const m = modules.find(x => x.id === selectedModuleId);
+      if (m) {
+        setModCode(m.code); setModName(m.name); setModDesc(m.description || ''); setEditingModule(true);
+        setModShowDashboard(!!m.showDashboardTab);
+      }
+    } else {
+      setModCode(''); setModName(''); setModDesc(''); setEditingModule(false); setModShowDashboard(false);
+    }
+  }, [selectedModuleId, modules]);
 
   const createModule = async () => {
     const c = modCode.trim(); const n = modName.trim();
@@ -54,16 +66,16 @@ export default function AdminModulesPage() {
     setLoading(true); setErr(null);
     try {
       if (editingModule && selectedModuleId) {
-        const res = await fetch(`/api/admin/modules/${selectedModuleId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: n, description: modDesc.trim() || null }) });
+        const res = await fetch(`/api/admin/modules/${selectedModuleId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: n, description: modDesc.trim() || null, showDashboardTab: modShowDashboard }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
       } else {
-        const res = await fetch('/api/admin/modules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: c, name: n, description: modDesc.trim() || null }) });
+        const res = await fetch('/api/admin/modules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: c, name: n, description: modDesc.trim() || null, showDashboardTab: modShowDashboard }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
       }
       setEditingModule(false);
-      setModCode(''); setModName(''); setModDesc('');
+      setModCode(''); setModName(''); setModDesc(''); setModShowDashboard(false);
       await loadModules();
     } catch (e: any) { setErr(e?.message || String(e)); } finally { setLoading(false); }
   };
@@ -138,6 +150,7 @@ export default function AdminModulesPage() {
                     setModCode(m.code || '');
                     setModName(m.name || '');
                     setModDesc(m.description || '');
+                    setModShowDashboard(m.showDashboardTab || false);
                   }}
                   className="text-xs px-2 py-1 border rounded"
                 >Editar</button>
@@ -161,6 +174,10 @@ export default function AdminModulesPage() {
             <input value={modCode} onChange={e=>setModCode(e.target.value)} readOnly={editingModule} placeholder="Código" className="w-full border rounded px-2 py-1 text-sm" />
             <input value={modName} onChange={e=>setModName(e.target.value)} placeholder="Nome" className="w-full border rounded px-2 py-1 text-sm" />
             <textarea value={modDesc} onChange={e=>setModDesc(e.target.value)} placeholder="Descrição (opcional)" className="w-full border rounded px-2 py-1 text-sm" />
+            <div className="flex items-center gap-2">
+              <input type="checkbox" checked={modShowDashboard} onChange={e => setModShowDashboard(e.target.checked)} id="modShowDashboard" />
+              <label htmlFor="modShowDashboard" className="text-sm">Aba Dashboard</label>
+            </div>
             <button onClick={createModule} className="text-xs px-3 py-1 bg-blue-600 text-white rounded">Salvar</button>
           </div>
         </div>

@@ -34,7 +34,7 @@ export async function GET() {
     if (!uid) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     const allowed = await isProgramAllowed(uid, entityId, 'ADMIN_MODULES');
     if (!allowed) return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
-    const modules = await prisma.$queryRawUnsafe(`SELECT "id", "code", "name", "description", "isActive" FROM "Module" ORDER BY "name"`);
+    const modules = await prisma.$queryRawUnsafe(`SELECT "id", "code", "name", "description", "isActive", "showDashboardTab" FROM "Module" ORDER BY "name"`);
     return NextResponse.json({ modules });
   } catch (err: any) {
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
@@ -53,10 +53,11 @@ export async function POST(request: Request) {
     const code = String(body.code || '').trim();
     const name = String(body.name || '').trim();
     const description = body.description ? String(body.description).trim() : null;
+    const showDashboardTab = body.showDashboardTab ? 'TRUE' : 'FALSE';
     if (!code || !name) return NextResponse.json({ error: 'Código e Nome obrigatórios' }, { status: 400 });
     const exists: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "Module" WHERE "code"='${code}'`);
     if (exists.length > 0) return NextResponse.json({ error: 'Código já cadastrado' }, { status: 409 });
-      await prisma.$executeRawUnsafe(`INSERT INTO "Module" ("code", "name", "description", "isActive") VALUES ('${code}', '${name.replace(/'/g, "''")}', ${description ? `'${description.replace(/'/g, "''")}'` : 'NULL'}, TRUE)`);
+      await prisma.$executeRawUnsafe(`INSERT INTO "Module" ("code", "name", "description", "isActive", "showDashboardTab") VALUES ('${code}', '${name.replace(/'/g, "''")}', ${description ? `'${description.replace(/'/g, "''")}'` : 'NULL'}, TRUE, ${showDashboardTab})`);
     const row: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "Module" WHERE "code"='${code}' LIMIT 1`);
     return NextResponse.json({ ok: true, id: row[0]?.id });
   } catch (err: any) {

@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import Sidebar from "./Sidebar";
 import ProgramGuard from "./ProgramGuard";
 
@@ -21,6 +22,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [perms, setPerms] = useState<Permissions | null>(null);
   const [loading, setLoading] = useState(true);
   const [autoSelected, setAutoSelected] = useState(false);
+  const [cartCount, setCartCount] = useState(0);
   const activeEntityId = (perms?.activeEntityId ?? null);
 
   const loadPerms = async () => {
@@ -41,6 +43,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   };
   useEffect(() => { loadPerms(); }, []);
+
+  useEffect(() => {
+    const fetchCount = async () => {
+        try {
+            const res = await fetch('/api/sales/representative/cart-count', { cache: 'no-store' });
+            if (res.ok) {
+                const data = await res.json();
+                setCartCount(data.count || 0);
+            }
+        } catch {}
+    };
+    if (session?.user) {
+        fetchCount();
+        // Update count periodically
+        const interval = setInterval(fetchCount, 10000); 
+        return () => clearInterval(interval);
+    }
+  }, [session]);
 
   const onChangeEntity = async (id: number) => {
     try {
@@ -68,8 +88,34 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             ))}
           </select>
           {/* ID do usuário logado ao lado do seletor de entidade */}
-          <div className="text-xs text-gray-600">Usuário ID: {(session?.user as any)?.id ?? '-'}</div>
-          <div className="ml-auto text-xs text-gray-500">{loading ? 'Carregando permissões…' : 'Permissões atualizadas'}</div>
+          <div className="text-xs text-gray-600">Usuário: {session?.user?.name ?? (session?.user as any)?.id ?? '-'}</div>
+          
+          <div className="ml-auto flex items-center gap-4">
+            {loading && <div className="text-xs text-gray-500">Carregando permissões…</div>}
+            
+            <Link href="/" className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-blue-600 transition-all shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="14" width="7" height="7"></rect>
+                    <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+                Dashboard
+            </Link>
+
+            <Link href="/sales/carts" className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors" title="Vendas - Carrinhos Cliente">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="8" cy="21" r="1" />
+                    <circle cx="19" cy="21" r="1" />
+                    <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
+                </svg>
+                {cartCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center border border-white">
+                        {cartCount}
+                    </span>
+                )}
+            </Link>
+          </div>
         </div>
         <div className="p-6">
           <ProgramGuard perms={perms}>

@@ -49,19 +49,20 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
     if (allowed.status) {
       const messages: any[] = Array.isArray(body?.messages) ? body.messages : [];
-      await prisma.$executeRaw(
-        Prisma.sql`DELETE FROM "SalesOrderStatusHistory" WHERE "orderId" = ${id} AND "status" = ${allowed.status}`
-      );
-      // Inserir histórico sem a coluna messages quando estiver vazia para evitar erro de binding
-      if (messages.length > 0) {
-        await prisma.$executeRaw(
-          Prisma.sql`INSERT INTO "SalesOrderStatusHistory" ("orderId", "status", messages) VALUES (${id}, ${allowed.status}, ${messages as any})`
-        );
-      } else {
-        await prisma.$executeRaw(
-          Prisma.sql`INSERT INTO "SalesOrderStatusHistory" ("orderId", "status") VALUES (${id}, ${allowed.status})`
-        );
-      }
+      // Remove existing history for this status to avoid duplication if that's the intent
+      // or simply add new history. The previous logic was DELETE then INSERT.
+      // Replicating logic using Prisma Client:
+      await prisma.salesOrderStatusHistory.deleteMany({
+        where: { orderId: id, status: allowed.status }
+      });
+      
+      await prisma.salesOrderStatusHistory.create({
+        data: {
+          orderId: id,
+          status: allowed.status,
+          messages: messages // Prisma handles Json type automatically
+        }
+      });
     }
     return NextResponse.json(updated);
   } catch (err: any) {
