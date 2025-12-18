@@ -60,6 +60,10 @@ model InventoryItem {
 
   // Disponibilidade por entidade/módulo
   entityModuleItems  EntityModuleItem[]
+
+  // Vínculos por cliente e carrinho
+  clientItems       ClientItem[]
+  clientCartItems   ClientCartItem[]
 }
 
 model Attachment {
@@ -232,6 +236,19 @@ model SalesOrder {
   updatedAt     DateTime         @updatedAt
   createdBy     User?            @relation(fields: [createdById], references: [id])
   items         SalesOrderItem[]
+  statusHistory SalesOrderStatusHistory[]
+}
+
+model SalesOrderStatusHistory {
+  id         Int       @id @default(autoincrement())
+  orderId    Int
+  status     String
+  changedAt  DateTime  @default(now())
+  messages   Json      @default("[]")
+  order      SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([changedAt])
 }
 
 model SalesOrderItem {
@@ -245,6 +262,13 @@ model SalesOrderItem {
   unitPrice       Float          @default(0)
   discountPct     Float          @default(0)
   lineTotal       Float          @default(0)
+  // Medidas e características
+  width           Int?
+  length          Int?
+  grammage        Int?
+  diameter        Int?
+  tube            Int?
+  weightKg        Int?
   inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
   order           SalesOrder     @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
@@ -274,9 +298,42 @@ model Client {
   createdAt  DateTime        @default(now())
   updatedAt  DateTime        @updatedAt
   reps       UserClientRep[]
+  items      ClientItem[]
+  cartItems  ClientCartItem[]
 
   @@index([name])
   @@index([cidade, estado])
+}
+
+// Itens vinculados ao cliente (cadastro alimentado via ERP/API)
+model ClientItem {
+  id              Int            @id @default(autoincrement())
+  clientId        Int
+  inventoryItemId Int
+  unit            String?
+  unitPrice       Float          @default(0)
+  allowed         Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  client          Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  inventoryItem   InventoryItem  @relation(fields: [inventoryItemId], references: [id])
+
+  @@unique([clientId, inventoryItemId])
+}
+
+// Carrinho de compras do cliente
+model ClientCartItem {
+  id              Int            @id @default(autoincrement())
+  clientId        Int
+  inventoryItemId Int
+  quantity        Int            @default(1)
+  unitPrice       Float          @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  client          Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  inventoryItem   InventoryItem  @relation(fields: [inventoryItemId], references: [id])
+
+  @@unique([clientId, inventoryItemId])
 }
 
 model UserClientRep {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../../lib/prisma';
+import { Prisma } from '@prisma/client';
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -16,21 +17,16 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const keys = Object.keys(allowed);
     if (keys.length === 0) return NextResponse.json({ error: 'Nada para atualizar' }, { status: 400 });
 
-    const assignments = keys.map((k) => `"${k}"=?`).join(', ');
-    const values = keys.map((k) => allowed[k]);
-
-    await prisma.$executeRawUnsafe(
-      `UPDATE "SalesOrderItem" SET ${assignments}, "lineTotal" = ("quantity" * "unitPrice" * (1 - COALESCE("discountPct",0)/100)) WHERE id=?`,
-      ...values,
-      id
+    const assignments = keys.map((k) => Prisma.sql`"${Prisma.raw(k)}" = ${allowed[k]}`);
+    await prisma.$executeRaw(
+      Prisma.sql`UPDATE "SalesOrderItem" SET ${Prisma.join(assignments, ', ')} , "lineTotal" = ("quantity" * "unitPrice" * (1 - COALESCE("discountPct",0)/100)) WHERE id = ${id}`
     );
 
-    const row: any[] = await prisma.$queryRawUnsafe(
-      `SELECT i.*, inv."commercialFamilyId" FROM "SalesOrderItem" i LEFT JOIN "InventoryItem" inv ON inv.id=i."inventoryItemId" WHERE i.id=?`, id
+    const row: any[] = await prisma.$queryRaw(
+      Prisma.sql`SELECT i.*, inv."commercialFamilyId" FROM "SalesOrderItem" i LEFT JOIN "InventoryItem" inv ON inv.id=i."inventoryItemId" WHERE i.id=${id}`
     );
     return NextResponse.json(row[0] ?? { ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
   }
 }
-

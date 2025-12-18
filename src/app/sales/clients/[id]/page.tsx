@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 type Client = { id: number; doc?: string | null; name: string; cep?: string | null; logradouro?: string | null; numero?: string | null; bairro?: string | null; cidade?: string | null; estado?: string | null };
 type OrderItem = { id: number; sku?: string | null; name: string; unit?: string | null; quantity: number; unitPrice: number; discountPct: number };
 type SalesOrder = { id: number; code: string; orderDate: string; customerName: string; customerDoc?: string | null; total: number; items?: OrderItem[] };
+type LinkedItem = { id: number; name: string; sku?: string | null; unit?: string | null; unitPrice?: number };
+type CartItem = { id: number; inventoryItemId: number; name: string; sku?: string | null; unit?: string | null; quantity: number; unitPrice: number };
 
 export default function ClientDetailsPage() {
   const params = useParams() as any;
@@ -14,21 +16,37 @@ export default function ClientDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const [linkedItems, setLinkedItems] = useState<LinkedItem[]>([]);
+  const [showCart, setShowCart] = useState(false);
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true); setError(null);
       try {
         const res = await fetch(`/api/base/clients?q=${encodeURIComponent(String(id))}`, { cache: 'no-store' });
+        if (!res.ok) throw new Error('Falha ao carregar cliente');
         const arr: Client[] = await res.json();
         const c = (arr || []).find((x) => Number(x.id) === id) || null;
         setClient(c);
         if (c?.doc) {
           const ro = await fetch(`/api/sales/orders?doc=${encodeURIComponent(c.doc)}`, { cache: 'no-store' });
-          const list: SalesOrder[] = await ro.json();
-          setOrders(Array.isArray(list) ? list : []);
+          if (ro.ok) {
+            const list: SalesOrder[] = await ro.json();
+            setOrders(Array.isArray(list) ? list : []);
+          } else {
+            setOrders([]);
+          }
+          const li = await fetch(`/api/clients/items/by-doc/${encodeURIComponent(c.doc)}`, { cache: 'no-store' });
+          if (li.ok) {
+            const linked: LinkedItem[] = await li.json();
+            setLinkedItems(Array.isArray(linked) ? linked : []);
+          } else {
+            setLinkedItems([]);
+          }
         } else {
           setOrders([]);
+          setLinkedItems([]);
         }
       } catch (e: any) {
         setError(e?.message || String(e));
@@ -37,17 +55,38 @@ export default function ClientDetailsPage() {
     if (Number.isFinite(id)) load();
   }, [id]);
 
-  const linkedItems = useMemo(() => {
-    const map = new Map<string, { name: string; sku?: string | null; unit?: string | null; qty: number }>();
-    for (const o of orders) {
-      for (const it of o.items || []) {
-        const key = `${it.sku || ''}|${it.name}|${it.unit || ''}`;
-        const prev = map.get(key);
-        map.set(key, { name: it.name, sku: it.sku || null, unit: it.unit || null, qty: (prev?.qty || 0) + Number(it.quantity || 0) });
-      }
+  const refreshCart = async () => {
+    if (!client) return;
+    const r = await fetch(`/api/clients/${client.id}/cart`, { cache: 'no-store' });
+    if (r.ok) {
+      const arr: CartItem[] = await r.json();
+      setCartItems(Array.isArray(arr) ? arr : []);
+    } else {
+      setCartItems([]);
     }
-    return Array.from(map.values());
-  }, [orders]);
+  };
+
+  const addToCart = async (inventoryItemId: number) => {
+    if (!client) return;
+    try {
+      const res = await fetch(`/api/clients/${client.id}/cart/items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inventoryItemId, quantity: 1 }) });
+      if (!res.ok) throw new Error('Falha ao adicionar ao carrinho');
+      await refreshCart();
+      setShowCart(true);
+    } catch (e: any) { alert(e?.message || String(e)); }
+  };
+
+  const updateCartQty = async (inventoryItemId: number, quantity: number) => {
+    if (!client) return;
+    const res = await fetch(`/api/clients/${client.id}/cart/items/${inventoryItemId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quantity }) });
+    if (res.ok) await refreshCart();
+  };
+
+  const removeFromCart = async (inventoryItemId: number) => {
+    if (!client) return;
+    const res = await fetch(`/api/clients/${client.id}/cart/items/${inventoryItemId}`, { method: 'DELETE' });
+    if (res.ok) await refreshCart();
+  };
 
   return (
     <div className="p-6 space-y-4">
@@ -59,12 +98,59 @@ export default function ClientDetailsPage() {
       {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</div>}
       {client && (
         <div className="border rounded bg-white p-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-            <div><span className="text-gray-600">CPF/CNPJ:</span> <span className="font-medium">{client.doc || '-'}</span></div>
-            <div><span className="text-gray-600">Nome:</span> <span className="font-medium">{client.name}</span></div>
-            <div><span className="text-gray-600">Cidade:</span> <span className="font-medium">{client.cidade || '-'}</span></div>
-            <div><span className="text-gray-600">UF:</span> <span className="font-medium">{client.estado || '-'}</span></div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+              <div><span className="text-gray-600">CPF/CNPJ:</span> <span className="font-medium">{client.doc || '-'}</span></div>
+              <div><span className="text-gray-600">Nome:</span> <span className="font-medium">{client.name}</span></div>
+              <div><span className="text-gray-600">Cidade:</span> <span className="font-medium">{client.cidade || '-'}</span></div>
+              <div><span className="text-gray-600">UF:</span> <span className="font-medium">{client.estado || '-'}</span></div>
+            </div>
+            <button
+              className="inline-flex items-center justify-center w-9 h-9 border rounded bg-white hover:bg-gray-50"
+              title="Carrinho do cliente"
+              aria-label="Carrinho do cliente"
+              onClick={() => { setShowCart((v) => !v); if (!showCart) refreshCart(); }}
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm10 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM6.2 6l-.9-2H1V2h4.1l1.7 4H21l-2 7H8.1l-1 2H19v2H6a1 1 0 0 1-.9-.6L2 6h4.2Z"/></svg>
+            </button>
           </div>
+        </div>
+      )}
+
+      {showCart && (
+        <div className="border rounded bg-white">
+          <div className="p-2 text-xs text-gray-600">Carrinho do cliente</div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="p-2 text-left">Item</th>
+                <th className="p-2 text-left">SKU</th>
+                <th className="p-2 text-left">Un.</th>
+                <th className="p-2 text-left">Qtd</th>
+                <th className="p-2 text-left">Preço Unit R$</th>
+                <th className="p-2 text-left">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cartItems.map((it) => (
+                <tr key={it.inventoryItemId} className="border-t">
+                  <td className="p-2">{it.name}</td>
+                  <td className="p-2">{it.sku || '-'}</td>
+                  <td className="p-2">{it.unit || '-'}</td>
+                  <td className="p-2">
+                    <input type="number" className="w-20 px-2 py-1 border rounded" value={it.quantity} onChange={(e) => updateCartQty(it.inventoryItemId, Number(e.target.value))} />
+                  </td>
+                  <td className="p-2">{(it.unitPrice ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                  <td className="p-2">
+                    <button className="px-2 py-1 text-xs border rounded" onClick={() => removeFromCart(it.inventoryItemId)}>Excluir</button>
+                  </td>
+                </tr>
+              ))}
+              {cartItems.length === 0 && (
+                <tr><td className="p-3 text-gray-500" colSpan={6}>Carrinho vazio</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -101,7 +187,8 @@ export default function ClientDetailsPage() {
               <th className="p-2 text-left">Item</th>
               <th className="p-2 text-left">SKU</th>
               <th className="p-2 text-left">Un.</th>
-              <th className="p-2 text-left">Qtd total</th>
+              <th className="p-2 text-left">Preço Unit R$</th>
+              <th className="p-2 text-left">Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -110,15 +197,22 @@ export default function ClientDetailsPage() {
                 <td className="p-2">{it.name}</td>
                 <td className="p-2">{it.sku || '-'}</td>
                 <td className="p-2">{it.unit || '-'}</td>
-                <td className="p-2">{it.qty}</td>
+                <td className="p-2">{(it.unitPrice ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td className="p-2">
+                  <button className="inline-flex items-center justify-center w-8 h-8 border rounded hover:bg-gray-100" title="Adicionar ao carrinho" aria-label="Adicionar ao carrinho" onClick={() => addToCart(it.id)}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm10 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM6.2 6l-.9-2H1V2h4.1l1.7 4H21l-2 7H8.1l-1 2H19v2H6a1 1 0 0 1-.9-.6L2 6h4.2Z"/></svg>
+                  </button>
+                </td>
               </tr>
             ))}
             {linkedItems.length === 0 && (
-              <tr><td className="p-3 text-gray-500" colSpan={4}>Sem itens</td></tr>
+              <tr><td className="p-3 text-gray-500" colSpan={5}>Sem itens</td></tr>
             )}
           </tbody>
         </table>
       </div>
+
+      
     </div>
   );
 }

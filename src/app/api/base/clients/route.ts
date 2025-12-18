@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../../../lib/auth';
 
 function normalizeDoc(doc: string): string {
   return (doc || '').replace(/\D+/g, '');
@@ -7,14 +9,34 @@ function normalizeDoc(doc: string): string {
 
 export async function GET(request: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    const userId = (session?.user as any)?.id ? Number((session?.user as any).id) : null;
+    
+    // Se não houver usuário logado, retorna lista vazia (ou erro 401 se preferir)
+    if (!userId) return NextResponse.json([]);
+
     const url = new URL(request.url);
     const q = (url.searchParams.get('q') || '').trim();
     const esc = q.replace(/'/g, "''");
-    const likeByText = `"name" ILIKE '%${esc}%' OR "cidade" ILIKE '%${esc}%' OR "estado" ILIKE '%${esc}%'`;
-    const likeById = `CAST("id" AS TEXT) ILIKE '%${esc}%'`;
-    const likeByDoc = `"doc" ILIKE '%${esc}%'`;
-    const whereSql = q ? `WHERE (${likeByText} OR ${likeById} OR ${likeByDoc})` : '';
-    const sql = `SELECT "id","doc","name","cep","logradouro","numero","bairro","cidade","estado" FROM "Client" ${whereSql} ORDER BY "name" ASC`;
+
+    // Ajuste nos likes para usar alias 'c' se necessário ou direto
+    // Como vamos fazer JOIN, é bom qualificar as colunas para evitar ambiguidade se houver colunas iguais em UserClientRep (ex: id)
+    const likeByText = `c."name" ILIKE '%${esc}%' OR c."cidade" ILIKE '%${esc}%' OR c."estado" ILIKE '%${esc}%'`;
+    const likeById = `CAST(c."id" AS TEXT) ILIKE '%${esc}%'`;
+    const likeByDoc = `c."doc" ILIKE '%${esc}%'`;
+    
+    const searchClause = q ? `AND (${likeByText} OR ${likeById} OR ${likeByDoc})` : '';
+
+    // Query filtrando por UserClientRep
+    const sql = `
+      SELECT c."id", c."doc", c."name", c."cep", c."logradouro", c."numero", c."bairro", c."cidade", c."estado" 
+      FROM "Client" c
+      INNER JOIN "UserClientRep" ucr ON c."id" = ucr."clientId"
+      WHERE ucr."userId" = ${userId}
+      ${searchClause}
+      ORDER BY c."name" ASC
+    `;
+
     const clients = await prisma.$queryRawUnsafe<any[]>(sql);
     return NextResponse.json(clients);
   } catch (err: any) {

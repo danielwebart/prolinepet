@@ -3,20 +3,29 @@ import { prisma } from '../../../../lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../lib/auth';
 
-export async function GET() {
-  const data = await prisma.salesOrder.findMany({
-    include: {
-      items: {
-        include: {
-          inventoryItem: {
-            include: { commercialFamily: true }
+export async function GET(request: Request) {
+  try {
+    const url = new URL(request.url);
+    const doc = url.searchParams.get('doc') || undefined;
+
+    const data = await prisma.salesOrder.findMany({
+      where: doc ? { customerDoc: doc } : undefined,
+      include: {
+        items: {
+          include: {
+            inventoryItem: {
+              include: { commercialFamily: true }
+            }
           }
         }
-      }
-    },
-    orderBy: { createdAt: 'desc' }
-  });
-  return NextResponse.json(data);
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    return NextResponse.json(Array.isArray(data) ? data : []);
+  } catch (err: any) {
+    const message = err?.message || 'Erro ao listar pedidos';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {

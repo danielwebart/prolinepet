@@ -46,7 +46,7 @@ export default function SalesOrdersPage() {
     const ds = dateStart ? new Date(dateStart) : null;
     const de = dateEnd ? new Date(dateEnd) : null;
     return (orders || [])
-      .filter((o) => (status ? o.status === status : true))
+      .filter((o) => (status ? statusLabelPt(o.status) === status : true))
       .filter((o) => {
         if (!qLower) return true;
         return (
@@ -76,6 +76,29 @@ export default function SalesOrdersPage() {
       case 'Faturado': return 'bg-green-100 text-green-800';
       case 'Cancelado': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const statusLabelPt = (s?: string) => {
+    const v = (s || '').trim().toUpperCase();
+    switch (v) {
+      case 'OPEN': return 'Orçamento';
+      case 'AGUARDANDO INTEGRAÇÃO':
+      case 'AGUARDANDO INTEGRACAO':
+      case 'AWAITING INTEGRATION': return 'Aguardando Integração';
+      case 'INTEGRADO':
+      case 'INTEGRATED': return 'Integrado';
+      case 'ERRO NA INTEGRAÇÃO':
+      case 'ERRO NA INTEGRACAO':
+      case 'INTEGRATION ERROR': return 'Erro na integração';
+      case 'EM FILA PRODUÇÃO':
+      case 'EM FILA PRODUCAO': return 'Em fila produção';
+      case 'EM PRODUÇÃO':
+      case 'EM PRODUCAO': return 'Em produção';
+      case 'PRODUZIDO/ESTOCADO': return 'Produzido/Estocado';
+      case 'FATURADO': return 'Faturado';
+      case 'CANCELADO': return 'Cancelado';
+      default: return s || '-';
     }
   };
 
@@ -192,7 +215,7 @@ export default function SalesOrdersPage() {
                   <td className="px-3 py-2">{o.customerName || '-'}</td>
                   <td className="px-3 py-2">{o.orderDate ? new Date(o.orderDate).toLocaleDateString() : '-'}</td>
                   <td className="px-3 py-2 text-right">{(o.total ?? 0).toLocaleString(undefined, { style: 'currency', currency: 'BRL' })}</td>
-                  <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded text-xs ${statusColor(o.status)}`}>{o.status || '-'}</span></td>
+                  <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded text-xs ${statusColor(statusLabelPt(o.status))}`}>{statusLabelPt(o.status)}</span></td>
                   <td className="px-3 py-2 text-center">
                     <div className="inline-flex">
                       <IconBtn title="Visualizar" onClick={() => setSelected(o)}><EyeIcon /></IconBtn>
