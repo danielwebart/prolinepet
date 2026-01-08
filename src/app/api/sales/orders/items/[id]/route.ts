@@ -2,6 +2,20 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../../lib/prisma';
 import { Prisma } from '@prisma/client';
 
+export async function GET(request: Request, { params }: { params: { id: string } }) {
+  try {
+    const id = Number(params.id);
+    const item = await prisma.salesOrderItem.findUnique({
+      where: { id },
+      include: { inventoryItem: true }
+    });
+    if (!item) return NextResponse.json({ error: 'Item não encontrado' }, { status: 404 });
+    return NextResponse.json(item);
+  } catch (err: any) {
+    return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
+  }
+}
+
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   try {
     const id = Number(params.id);
