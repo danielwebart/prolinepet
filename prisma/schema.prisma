@@ -270,6 +270,10 @@ model SalesOrderItem {
   diameter        Int?
   tube            Int?
   weightKg        Int?
+  creases         Json?
+  clientOrderNumber String?
+  internalResin   Boolean?       @default(false)
+  externalResin   Boolean?       @default(false)
   inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
   order           SalesOrder     @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }

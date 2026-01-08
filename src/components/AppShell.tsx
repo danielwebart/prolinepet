@@ -23,6 +23,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [autoSelected, setAutoSelected] = useState(false);
   const [cartCount, setCartCount] = useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const activeEntityId = (perms?.activeEntityId ?? null);
 
   const loadPerms = async () => {
@@ -73,11 +74,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   };
   return (
     <div className="flex">
-      <Sidebar perms={perms} />
+      <Sidebar perms={perms} mobileOpen={mobileMenuOpen} setMobileOpen={setMobileMenuOpen} />
       <main className="flex-1 min-h-screen">
         {/* Top bar com seletor de entidade */}
         <div className="sticky top-0 z-10 bg-white border-b border-gray-200 p-3 flex items-center gap-3">
-          <div className="text-sm text-gray-700">Entidade:</div>
+          {/* Mobile Menu Toggle */}
+          <button 
+            className="md:hidden p-1 mr-1 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded"
+            onClick={() => setMobileMenuOpen(true)}
+            aria-label="Abrir menu"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+          </button>
+
+          <div className="text-sm text-gray-700 hidden sm:block">Entidade:</div>
           <select
             className="text-sm border rounded px-2 py-1"
             value={activeEntityId ?? ''}

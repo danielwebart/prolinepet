@@ -33,7 +33,7 @@ function pathToProgramCode(pathname: string): string | null {
 
 export default function ProgramGuard({ perms, children }: { perms: Permissions | null; children: React.ReactNode }) {
   const pathname = usePathname();
-  const code = pathToProgramCode(pathname);
+  const code = pathname ? pathToProgramCode(pathname) : null;
   if (!code || !perms || !perms.activeEntityId) return <>{children}</>;
   const allowed = perms.modules.some((m) => m.programs.some((p) => p.code === code));
   if (allowed) return <>{children}</>;

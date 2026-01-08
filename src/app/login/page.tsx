@@ -1,8 +1,11 @@
 "use client";
-import { useRef, useState } from "react";
+import { useRef, useState, Suspense } from "react";
 import { signIn } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+function LoginForm() {
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams?.get("callbackUrl") || "/";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,7 +27,7 @@ export default function LoginPage() {
       email,
       password,
       redirect: false,
-      callbackUrl: "/",
+      callbackUrl,
     });
     setLoading(false);
     if (res?.error) {
@@ -269,5 +272,13 @@ export default function LoginPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div>Carregando...</div>}>
+      <LoginForm />
+    </Suspense>
   );
 }

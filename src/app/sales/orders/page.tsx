@@ -213,8 +213,8 @@ export default function SalesOrdersPage() {
                 <tr key={o.id} className="border-t hover:bg-gray-50">
                   <td className="px-3 py-2 font-mono text-xs">{o.code || o.id}</td>
                   <td className="px-3 py-2">{o.customerName || '-'}</td>
-                  <td className="px-3 py-2">{o.orderDate ? new Date(o.orderDate).toLocaleDateString() : '-'}</td>
-                  <td className="px-3 py-2 text-right">{(o.total ?? 0).toLocaleString(undefined, { style: 'currency', currency: 'BRL' })}</td>
+                  <td className="px-3 py-2">{o.orderDate ? new Date(o.orderDate).toLocaleDateString('pt-BR') : '-'}</td>
+                  <td className="px-3 py-2 text-right">{(o.total ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                   <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded text-xs ${statusColor(statusLabelPt(o.status))}`}>{statusLabelPt(o.status)}</span></td>
                   <td className="px-3 py-2 text-center">
                     <div className="inline-flex">
@@ -283,7 +283,7 @@ export default function SalesOrdersPage() {
                     <tr key={it.id} className="border-t">
                       <td className="px-2 py-1">{it.name}</td>
                       <td className="px-2 py-1 text-right">{it.quantity}</td>
-                      <td className="px-2 py-1 text-right">{it.unitPrice.toLocaleString(undefined, { style: 'currency', currency: 'BRL' })}</td>
+                      <td className="px-2 py-1 text-right">{it.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                       <td className="px-2 py-1 text-right">{it.discountPct}%</td>
                     </tr>
                   ))}

@@ -20,7 +20,10 @@ export async function GET(request: Request) {
         }
       });
       
-      let items = links.map(l => l.inventoryItem);
+      let items = links.map(l => ({
+        ...l.inventoryItem,
+        unitPrice: l.unitPrice
+      }));
       
       if (qParam) {
         const lower = qParam.toLowerCase();

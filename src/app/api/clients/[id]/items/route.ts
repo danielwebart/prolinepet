@@ -9,7 +9,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     const rawBody = await request.json();
     const items = Array.isArray(rawBody) ? rawBody : [rawBody];
-    const results = [];
+    const results: any[] = [];
 
     for (const body of items) {
       try {

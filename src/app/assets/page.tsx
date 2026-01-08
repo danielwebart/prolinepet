@@ -376,7 +376,7 @@ function AssetDetailsPanel({ asset }: { asset?: any }) {
       try {
         const list = await fetch(`/api/assets/${asset.id}/photos`).then((r) => r.json());
         // Seleciona a primeira imagem válida
-        const img = (Array.isArray(list) ? list : []).find((p: any) => {
+        const img = (Array.isArray(list) ? (list as any[]) : []).find((p: any) => {
           const mt = (p?.mimeType || '').toLowerCase();
           const url = String(p?.url || '');
           return (mt && mt.startsWith('image')) || /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(url);
@@ -471,7 +471,7 @@ function RootMachinesGrid({ items, loading, onSelect, rootPhotos, setRootPhotos 
   const ensurePhoto = async (assetId: number) => {
     if (rootPhotos[assetId]) return;
     const list = await fetch(`/api/assets/${assetId}/photos`).then((r) => safeParseJson(r, []));
-    const img = (Array.isArray(list) ? list : []).find((p: any) => {
+    const img = (Array.isArray(list) ? (list as any[]) : []).find((p: any) => {
       const mt = (p?.mimeType || '').toLowerCase();
       const url = String(p?.url || '');
       return (mt && mt.startsWith('image')) || /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(url);

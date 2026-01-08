@@ -1,5 +1,4 @@
 "use client";
-export const dynamic = 'force-dynamic';
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { safeParseJson } from "../../lib/safeJson";
 import { useSearchParams } from "next/navigation";
@@ -56,10 +55,10 @@ function WorkOrdersInner() {
     // Carregar ativos e lista de técnicos
     fetch("/api/assets").then((r) => r.json()).then((list) => {
       setAssets(list);
-      const assetIdParam = searchParams.get("assetId");
-      const assetIdsParam = searchParams.get("assetIds");
-      const rootParam = searchParams.get("rootAssetId");
-      const createParam = searchParams.get("create");
+      const assetIdParam = searchParams?.get("assetId");
+      const assetIdsParam = searchParams?.get("assetIds");
+      const rootParam = searchParams?.get("rootAssetId");
+      const createParam = searchParams?.get("create");
       if (rootParam) {
         const rid = Number(rootParam);
         if (!Number.isNaN(rid)) setRootAssetId(rid);

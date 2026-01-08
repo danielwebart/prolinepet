@@ -97,12 +97,13 @@ function programHref(code: string): string | null {
   }
 }
 
-export default function Sidebar({ perms }: { perms: Permissions }) {
+export default function Sidebar({ perms, mobileOpen, setMobileOpen }: { perms: Permissions; mobileOpen?: boolean; setMobileOpen?: (v: boolean) => void }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
+    // Only access localStorage on client and for desktop preference
     const saved = localStorage.getItem("sidebar-collapsed");
     setCollapsed(saved === "1");
   }, []);
@@ -113,7 +114,14 @@ export default function Sidebar({ perms }: { perms: Permissions }) {
     localStorage.setItem("sidebar-collapsed", next ? "1" : "0");
   };
 
-  // Expand automaticamente o módulo que contém a rota ativa
+  // Close mobile menu when route changes
+  useEffect(() => {
+    if (mobileOpen && setMobileOpen) {
+      setMobileOpen(false);
+    }
+  }, [pathname]);
+
+  // Expand automatically based on route
   useEffect(() => {
     const mods = perms?.modules ?? [];
     const initial: Record<string, boolean> = {};
@@ -121,7 +129,7 @@ export default function Sidebar({ perms }: { perms: Permissions }) {
       const hasActive = (m.programs || []).some((p) => {
         const href = programHref(p.code);
         if (!href) return false;
-        return pathname === href || (href !== "/" && pathname.startsWith(href));
+        return pathname === href || (href !== "/" && pathname?.startsWith(href));
       });
       initial[m.code] = hasActive;
     });
@@ -133,26 +141,48 @@ export default function Sidebar({ perms }: { perms: Permissions }) {
   };
 
   return (
-    <aside className={`${collapsed ? "w-16" : "w-64"} shrink-0 bg-gray-900 text-white h-screen sticky top-0 flex flex-col`}>
-      <div className={`px-3 py-4 border-b border-gray-800 flex items-center ${collapsed ? "justify-center" : "gap-2"}`}>
-        <img src="/icons/logo cartonificio.png" alt="Cartonifício Valinhos" className={`${collapsed ? "w-8 h-8" : "w-8 h-8"} object-contain`} />
-        {!collapsed && (
-          <div>
-            <div className="text-sm font-semibold">Cartonifício Valinhos</div>
-            <div className="text-xs text-gray-300">Manutenção</div>
-          </div>
-        )}
-        <button onClick={toggle} className="ml-auto text-gray-300 hover:text-white" aria-label="Alternar menu">
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h16v2H4v-2z"/></svg>
-        </button>
-      </div>
+    <>
+      {/* Mobile Overlay */}
+      {mobileOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={() => setMobileOpen?.(false)}
+        />
+      )}
+      
+      <aside 
+        className={`
+          fixed inset-y-0 left-0 z-50 bg-gray-900 text-white h-screen flex flex-col transition-all duration-300
+          md:sticky md:top-0 md:shrink-0
+          ${mobileOpen ? "translate-x-0 shadow-xl" : "-translate-x-full md:translate-x-0"}
+          ${collapsed ? "md:w-16" : "md:w-64"}
+          w-64
+        `}
+      >
+        <div className={`px-3 py-4 border-b border-gray-800 flex items-center ${collapsed ? "justify-center md:justify-center" : "gap-2"}`}>
+          <img src="/icons/logo cartonificio.png" alt="Cartonifício Valinhos" className="w-8 h-8 object-contain" />
+          {(!collapsed || mobileOpen) && (
+            <div className={`md:${collapsed ? "hidden" : "block"}`}>
+              <div className="text-sm font-semibold">Cartonifício Valinhos</div>
+              <div className="text-xs text-gray-300">Manutenção</div>
+            </div>
+          )}
+          {/* Desktop Toggle */}
+          <button onClick={toggle} className="ml-auto text-gray-300 hover:text-white hidden md:block" aria-label="Alternar menu">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h16v2H4v-2z"/></svg>
+          </button>
+          {/* Mobile Close */}
+          <button onClick={() => setMobileOpen?.(false)} className="ml-auto text-gray-300 hover:text-white md:hidden" aria-label="Fechar menu">
+            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
       <nav className="p-2 space-y-1 overflow-y-auto flex-1 sidebar-scroll">
         {(perms?.modules ?? []).map((m) => {
           const isExpanded = !!expanded[m.code];
           const anyActive = (m.programs || []).some((p) => {
             const href = programHref(p.code);
             if (!href) return false;
-            return pathname === href || (href !== "/" && pathname.startsWith(href));
+            return pathname === href || (href !== "/" && pathname?.startsWith(href));
           });
           return (
             <div key={m.code}>
@@ -202,7 +232,7 @@ export default function Sidebar({ perms }: { perms: Permissions }) {
                         default: return null;
                       }
                     })();
-                    const active = pathname === href || (href !== "/" && pathname.startsWith(href));
+                    const active = pathname === href || (href !== "/" && pathname?.startsWith(href));
                     return (
                       <Link
                         key={p.code}
@@ -232,5 +262,6 @@ export default function Sidebar({ perms }: { perms: Permissions }) {
         </button>
       </div>
     </aside>
+    </>
   );
 }

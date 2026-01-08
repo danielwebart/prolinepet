@@ -142,7 +142,7 @@ export async function POST() {
   stats.entitiesScanned = entities.length;
   for (const e of entities) {
     const name = fixString(e.name);
-    if (name !== e.name) {
+    if (name != null && name !== e.name) {
       await prisma.entity.update({ where: { id: e.id }, data: { name } });
       stats.entitiesUpdated++;
     }

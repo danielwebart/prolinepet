@@ -8,6 +8,7 @@ type InventoryItem = {
   name: string;
   unit?: string | null;
   commercialFamily?: { id: number; name: string } | null;
+  unitPrice?: number | null;
 };
 
 type OrderItem = {
@@ -24,6 +25,10 @@ type OrderItem = {
   diameter?: number | null;
   tube?: number | null;
   inventoryItem?: InventoryItem | null;
+  creases?: Record<string, number> | null;
+  clientOrderNumber?: string | null;
+  internalResin?: boolean;
+  externalResin?: boolean;
 };
 
 type SalesOrder = {
@@ -222,6 +227,7 @@ export default function SalesOrderMaintenancePage() {
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draft, setDraft] = useState<Partial<OrderItem>>({});
+  const [discountInput, setDiscountInput] = useState('');
   const [showFeaturesFor, setShowFeaturesFor] = useState<number | null>(null);
   const [hdrDraft, setHdrDraft] = useState<{ paymentTerms?: string; deliveryDate?: string; customerName?: string; customerDoc?: string }>({});
   const [isHeaderEditing, setIsHeaderEditing] = useState(false);
@@ -272,7 +278,7 @@ export default function SalesOrderMaintenancePage() {
         sku: item.sku,
         unit: item.unit,
         quantity: 1,
-        unitPrice: 0, 
+        unitPrice: item.unitPrice ?? 0,
         discountPct: 0
       };
       
@@ -375,13 +381,19 @@ export default function SalesOrderMaintenancePage() {
 
   const startEdit = (it: OrderItem) => {
     setEditingId(it.id);
+    setDiscountInput(it.discountPct.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     setDraft({
       quantity: it.quantity,
+      discountPct: it.discountPct,
       width: it.width ?? undefined,
       length: it.length ?? undefined,
       grammage: it.grammage ?? undefined,
       diameter: it.diameter ?? undefined,
       tube: it.tube ?? undefined,
+      creases: it.creases ?? {},
+      clientOrderNumber: it.clientOrderNumber ?? undefined,
+      internalResin: it.internalResin ?? false,
+      externalResin: it.externalResin ?? false,
     });
   };
   const cancelEdit = () => { setEditingId(null); setDraft({}); };
@@ -661,40 +673,85 @@ export default function SalesOrderMaintenancePage() {
                               <td className="p-2">{showDiameterTube ? (isEditing ? (<input type="number" step="1" className="w-24 px-2 py-1 border rounded" value={draft.tube ?? it.tube ?? ''} onChange={(e) => setDraft((d) => ({ ...d, tube: parseInt(e.target.value || '0', 10) }))} />) : (fmtInt(it.tube ?? undefined))) : '-'}</td>
                             </>
                           )}
-                          <td className="p-2">{isEditing ? (<input type="number" className="w-20 px-2 py-1 border rounded" value={draft.quantity ?? it.quantity} onChange={(e) => setDraft((d) => ({ ...d, quantity: Number(e.target.value) }))} />) : it.quantity}</td>
+                          <td className="p-2">{isEditing ? (<input type="text" className="w-20 px-2 py-1 border rounded" value={draft.quantity ?? ''} onChange={(e) => { const v = e.target.value.replace(/\D/g, ''); setDraft(d => ({ ...d, quantity: v === '' ? undefined : parseInt(v, 10) })) }} />) : it.quantity}</td>
                           <td className="p-2">{fmtInt(computeWeightKg(it, isEditing))}</td>
-                          <td className="p-2">{it.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                          <td className="p-2">{it.discountPct}%</td>
                           <td className="p-2">
-                            {!isEditing ? (
-                              <div className="flex items-center justify-center gap-2">
-                                <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" title="Características do item" aria-label="Características" onClick={() => setShowFeaturesFor(showFeaturesFor === it.id ? null : it.id)}>
-                                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 0 0 1-2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"></path></svg>
-                                </button>
-                                <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" title="Editar" aria-label="Editar" onClick={() => startEdit(it)}>
-                                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
-                                </button>
-                                <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" title="Excluir" aria-label="Excluir" onClick={async () => {
-                                  if (!confirm('Confirma excluir este item?')) return;
-                                  try {
-                                    const res = await fetch(`/api/sales/orders/items/${it.id}`, { method: 'DELETE' });
-                                    if (!res.ok) throw new Error('Falha ao excluir item');
-                                    await refreshOrder();
-                                  } catch (e: any) { alert(e?.message || String(e)); }
-                                }}>
-                                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                                </button>
-                              </div>
+                            {isEditing ? (
+                              <input 
+                                type="text" 
+                                className="w-24 px-2 py-1 border rounded bg-gray-100 text-gray-600 cursor-not-allowed" 
+                                value={(draft.unitPrice ?? it.unitPrice ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 
+                                disabled 
+                              />
                             ) : (
-                              <div className="flex items-center justify-center gap-2">
-                                <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-green-600" title="Salvar" aria-label="Salvar" onClick={saveEdit}>
-                                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17Z"/></svg>
-                                </button>
-                                <button className="inline-flex items-center justify-center w-8 h-8 bg-red-50 border border-red-200 rounded shadow-sm hover:bg-red-100 text-red-600" title="Cancelar" aria-label="Cancelar" onClick={cancelEdit}>
-                                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.41 4.29 19.71 2.88 18.3 9.17 12 2.88 5.71 4.29 4.29 10.59 10.59 16.89 4.29l1.41 1.42Z"/></svg>
-                                </button>
-                              </div>
+                              it.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                             )}
+                          </td>
+                          <td className="p-2">
+                             {isEditing ? (
+                               <input 
+                                 type="text" 
+                                 className="w-20 px-2 py-1 border rounded" 
+                                 value={discountInput} 
+                                 onChange={(e) => {
+                                    const val = e.target.value;
+                                    const filtered = val.replace(/[^0-9,]/g, '');
+                                    const parts = filtered.split(',');
+                                    const clean = parts[0] + (parts.length > 1 ? ',' + parts.slice(1).join('') : '');
+                                    setDiscountInput(clean);
+                                    const num = parseFloat(clean.replace(',', '.'));
+                                    setDraft(d => ({ ...d, discountPct: isNaN(num) ? 0 : num }));
+                                 }} 
+                               />
+                             ) : (
+                               `${it.discountPct.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
+                             )}
+                          </td>
+                          <td className="p-2">
+                            <div className="flex items-center justify-center gap-2">
+                              {/* Botão de Características sempre visível */}
+                              <button 
+                                className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" 
+                                title="Características/Detalhes" 
+                                aria-label="Características" 
+                                onClick={() => setShowFeaturesFor(showFeaturesFor === it.id ? null : it.id)}
+                              >
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 0 0 1-2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"></path></svg>
+                              </button>
+
+                              {/* Ações de edição/exclusão ou salvar/cancelar */}
+                              <div className="flex items-center gap-2">
+                                {!isEditing ? (
+                                  <>
+                                    <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" title="Editar" aria-label="Editar" onClick={() => startEdit(it)}>
+                                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                                    </button>
+                                    <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" title="Excluir" aria-label="Excluir" onClick={async () => {
+                                      if (!confirm('Confirma excluir este item?')) return;
+                                      try {
+                                        const res = await fetch(`/api/sales/orders/items/${it.id}`, { method: 'DELETE' });
+                                        if (!res.ok) {
+                                          const errData = await res.json().catch(() => ({}));
+                                          throw new Error(errData.error || 'Falha ao excluir item');
+                                        }
+                                        await refreshOrder();
+                                      } catch (e: any) { alert(e?.message || String(e)); }
+                                    }}>
+                                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-green-600" title="Salvar" aria-label="Salvar" onClick={saveEdit}>
+                                      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17Z"/></svg>
+                                    </button>
+                                    <button className="inline-flex items-center justify-center w-8 h-8 bg-red-50 border border-red-200 rounded shadow-sm hover:bg-red-100 text-red-600" title="Cancelar" aria-label="Cancelar" onClick={cancelEdit}>
+                                      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.41 4.29 19.71 2.88 18.3 9.17 12 2.88 5.71 4.29 4.29 10.59 10.59 16.89 4.29l1.41 1.42Z"/></svg>
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
                           </td>
                         </tr>
                         {isFeatures && (
@@ -709,21 +766,54 @@ export default function SalesOrderMaintenancePage() {
                                       {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
                                         <div key={n} className="flex items-center gap-1">
                                           <span className="text-xs text-gray-500 w-3">{n}</span>
-                                          <input type="number" className="w-16 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" placeholder="0" disabled={!isEditing} />
+                                          <input 
+                                            type="number" 
+                                            className="w-16 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
+                                            placeholder="0" 
+                                            disabled={!isEditing}
+                                            value={isEditing ? (draft.creases?.[n] ?? '') : (it.creases?.[n] ?? '')}
+                                            onChange={(e) => {
+                                              const val = e.target.value ? parseInt(e.target.value, 10) : undefined;
+                                              setDraft(d => ({
+                                                ...d,
+                                                creases: { ...(d.creases || {}), [n]: val === undefined ? 0 : val }
+                                              }));
+                                            }}
+                                          />
                                         </div>
                                       ))}
                                     </div>
                                   </div>
                                   <div className="space-y-1">
                                     <label className="text-xs text-gray-600 block">Pedido Cliente</label>
-                                    <input type="text" className="w-48 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" disabled={!isEditing} />
+                                    <input 
+                                      type="text" 
+                                      className="w-48 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
+                                      disabled={!isEditing}
+                                      value={isEditing ? (draft.clientOrderNumber ?? '') : (it.clientOrderNumber ?? '')}
+                                      onChange={(e) => setDraft(d => ({ ...d, clientOrderNumber: e.target.value }))}
+                                    />
                                   </div>
                                   <div className="flex items-center gap-2 pb-2">
-                                    <input type="checkbox" id={`res-in-${it.id}`} className="rounded border-gray-300 disabled:bg-gray-100" disabled={!isEditing} />
+                                    <input 
+                                      type="checkbox" 
+                                      id={`res-in-${it.id}`} 
+                                      className="rounded border-gray-300 disabled:bg-gray-100" 
+                                      disabled={!isEditing}
+                                      checked={isEditing ? (draft.internalResin ?? false) : (it.internalResin ?? false)}
+                                      onChange={(e) => setDraft(d => ({ ...d, internalResin: e.target.checked }))}
+                                    />
                                     <label htmlFor={`res-in-${it.id}`} className={`text-sm ${!isEditing ? 'text-gray-500' : 'text-gray-700'}`}>Resina interna</label>
                                   </div>
                                   <div className="flex items-center gap-2 pb-2">
-                                    <input type="checkbox" id={`res-out-${it.id}`} className="rounded border-gray-300 disabled:bg-gray-100" disabled={!isEditing} />
+                                    <input 
+                                      type="checkbox" 
+                                      id={`res-out-${it.id}`} 
+                                      className="rounded border-gray-300 disabled:bg-gray-100" 
+                                      disabled={!isEditing}
+                                      checked={isEditing ? (draft.externalResin ?? false) : (it.externalResin ?? false)}
+                                      onChange={(e) => setDraft(d => ({ ...d, externalResin: e.target.checked }))}
+                                    />
                                     <label htmlFor={`res-out-${it.id}`} className={`text-sm ${!isEditing ? 'text-gray-500' : 'text-gray-700'}`}>Resina externa</label>
                                   </div>
                                 </div>
@@ -738,8 +828,17 @@ export default function SalesOrderMaintenancePage() {
                 </table>
               </div>
               {(() => {
-                const subtotal = list.reduce((s, it) => s + (it.quantity * it.unitPrice), 0);
-                const discountTotal = list.reduce((s, it) => s + (it.quantity * it.unitPrice * (it.discountPct / 100)), 0);
+                const subtotal = list.reduce((s, it) => {
+                  const isEd = editingId === it.id;
+                  const qty = isEd ? (draft.quantity ?? it.quantity) : it.quantity;
+                  return s + (qty * it.unitPrice);
+                }, 0);
+                const discountTotal = list.reduce((s, it) => {
+                  const isEd = editingId === it.id;
+                  const qty = isEd ? (draft.quantity ?? it.quantity) : it.quantity;
+                  const discount = isEd ? (draft.discountPct ?? it.discountPct) : it.discountPct;
+                  return s + (qty * it.unitPrice * (discount / 100));
+                }, 0);
                 const total = subtotal - discountTotal;
                 const totalWeight = list.reduce((s, it) => s + Math.round(computeWeightKg(it, editingId === it.id)), 0);
                 return (
