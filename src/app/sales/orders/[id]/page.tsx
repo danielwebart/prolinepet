@@ -27,6 +27,8 @@ type OrderItem = {
   inventoryItem?: InventoryItem | null;
   creases?: Record<string, number> | null;
   clientOrderNumber?: string | null;
+  clientOrderItemNumber?: number | null;
+  itemDeliveryDate?: string | Date | null;
   internalResin?: boolean;
   externalResin?: boolean;
 };
@@ -51,6 +53,13 @@ type SalesOrder = {
 };
 
 const ICON_BTN = "inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700";
+
+const isDeletableStatus = (status?: string) => {
+  const s = (status || '').toUpperCase();
+  return s === 'OPEN' || s.includes('ERRO') || s.includes('ERROR');
+};
+
+const isEditableStatus = isDeletableStatus;
 
 const minChars = 1;
 
@@ -438,6 +447,8 @@ export default function SalesOrderMaintenancePage() {
       tube: it.tube ?? undefined,
       creases: it.creases ?? {},
       clientOrderNumber: it.clientOrderNumber ?? undefined,
+      clientOrderItemNumber: it.clientOrderItemNumber ?? undefined,
+      itemDeliveryDate: it.itemDeliveryDate ?? undefined,
       internalResin: it.internalResin ?? false,
       externalResin: it.externalResin ?? false,
     });
@@ -453,6 +464,7 @@ export default function SalesOrderMaintenancePage() {
       if (!res.ok) throw new Error('Falha ao salvar item');
       const updated: any = await res.json();
       setEditingId(null); setDraft({});
+      setShowFeaturesFor(null);
       // Refresh
       const r = await fetch(`/api/sales/orders/${id}`, { cache: 'no-store' });
       setOrder(await r.json());
@@ -586,14 +598,14 @@ export default function SalesOrderMaintenancePage() {
               </div>
               <div className="ml-auto flex gap-2">
                 <button 
-                  className="flex items-center gap-1 px-3 py-1 text-sm bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" 
+                  className={`flex items-center gap-1 px-3 py-1 text-sm bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700 ${!isEditableStatus(order?.status) ? 'opacity-50 cursor-not-allowed' : ''}`}
                   onClick={handleSimulateTaxes}
-                  disabled={simulating}
+                  disabled={simulating || !isEditableStatus(order?.status)}
                 >
                   {simulating ? 'Simulando...' : 'Simular Impostos'}
                 </button>
 
-                <button className={ICON_BTN} title="Enviar para ERP" aria-label="Enviar para ERP" disabled={integrating} onClick={async () => {
+                <button className={`${ICON_BTN} ${integrating || !isEditableStatus(order?.status) ? 'opacity-50 cursor-not-allowed' : ''}`} title="Enviar para ERP" aria-label="Enviar para ERP" disabled={integrating || !isEditableStatus(order?.status)} onClick={async () => {
                   if (!order) return;
                   if (!confirm('Confirma enviar este pedido para o ERP?')) return;
                   setIntegrating(true);
@@ -631,7 +643,7 @@ export default function SalesOrderMaintenancePage() {
                       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                   )}
                 </button>
-                <button className={ICON_BTN} title="Excluir" aria-label="Excluir" onClick={async () => { if (!order) return; if (!confirm('Confirma excluir este pedido?')) return; const r = await fetch(`/api/sales/orders/${order.id}`, { method: 'DELETE' }); if (r.ok) router.push('/sales/orders'); }}>
+                <button className={`${ICON_BTN} ${!isDeletableStatus(order?.status) ? 'opacity-50 cursor-not-allowed' : ''}`} title="Excluir" aria-label="Excluir" disabled={!isDeletableStatus(order?.status)} onClick={async () => { if (!order) return; if (!confirm('Confirma excluir este pedido?')) return; const r = await fetch(`/api/sales/orders/${order.id}`, { method: 'DELETE' }); if (r.ok) router.push('/sales/orders'); }}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 </button>
                 {isHeaderEditing ? (
@@ -644,7 +656,7 @@ export default function SalesOrderMaintenancePage() {
                     </button>
                   </>
                 ) : (
-                  <button className={ICON_BTN} title="Editar" aria-label="Editar" onClick={() => setIsHeaderEditing(true)}>
+                  <button className={`${ICON_BTN} ${!isEditableStatus(order?.status) ? 'opacity-50 cursor-not-allowed' : ''}`} title="Editar" aria-label="Editar" disabled={!isEditableStatus(order?.status)} onClick={() => setIsHeaderEditing(true)}>
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
                   </button>
                 )}
@@ -696,7 +708,7 @@ export default function SalesOrderMaintenancePage() {
           <div className="border rounded bg-white">
             <div className="px-3 py-2 border-b flex items-center gap-2">
               <span className="text-sm text-gray-700">Itens</span>
-              <button className="ml-auto px-2 py-1 text-xs border rounded bg-white hover:bg-gray-100" onClick={() => { setAddingItems(true); searchClientItems(''); }}>Adicionar itens</button>
+              <button className={`ml-auto px-2 py-1 text-xs border rounded bg-white hover:bg-gray-100 ${!isEditableStatus(order?.status) ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={!isEditableStatus(order?.status)} onClick={() => { setAddingItems(true); searchClientItems(''); }}>Adicionar itens</button>
             </div>
             {addingItems && (
               <div className="p-3 border-b">
@@ -819,10 +831,10 @@ export default function SalesOrderMaintenancePage() {
                               <div className="flex items-center gap-2">
                                 {!isEditing ? (
                                   <>
-                                    <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" title="Editar" aria-label="Editar" onClick={() => startEdit(it)}>
+                                    <button className={`inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700 ${!isEditableStatus(order?.status) ? 'opacity-50 cursor-not-allowed' : ''}`} title="Editar" aria-label="Editar" disabled={!isEditableStatus(order?.status)} onClick={() => startEdit(it)}>
                                       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
                                     </button>
-                                    <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" title="Excluir" aria-label="Excluir" onClick={async () => {
+                                    <button className={`inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700 ${!isEditableStatus(order?.status) ? 'opacity-50 cursor-not-allowed' : ''}`} title="Excluir" aria-label="Excluir" disabled={!isEditableStatus(order?.status)} onClick={async () => {
                                       if (!confirm('Confirma excluir este item?')) return;
                                       try {
                                         const res = await fetch(`/api/sales/orders/items/${it.id}`, { method: 'DELETE' });
@@ -888,6 +900,26 @@ export default function SalesOrderMaintenancePage() {
                                       disabled={!isEditing}
                                       value={isEditing ? (draft.clientOrderNumber ?? '') : (it.clientOrderNumber ?? '')}
                                       onChange={(e) => setDraft(d => ({ ...d, clientOrderNumber: e.target.value }))}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-xs text-gray-600 block">Item Pedido</label>
+                                    <input 
+                                      type="number" 
+                                      className="w-24 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
+                                      disabled={!isEditing}
+                                      value={isEditing ? (draft.clientOrderItemNumber ?? '') : (it.clientOrderItemNumber ?? '')}
+                                      onChange={(e) => setDraft(d => ({ ...d, clientOrderItemNumber: e.target.value ? Number(e.target.value) : null }))}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-xs text-gray-600 block">Data Entrega</label>
+                                    <input 
+                                      type="date" 
+                                      className="w-32 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
+                                      disabled={!isEditing}
+                                      value={isEditing ? (draft.itemDeliveryDate ? new Date(draft.itemDeliveryDate).toISOString().split('T')[0] : '') : (it.itemDeliveryDate ? new Date(it.itemDeliveryDate).toISOString().split('T')[0] : '')}
+                                      onChange={(e) => setDraft(d => ({ ...d, itemDeliveryDate: e.target.value ? new Date(e.target.value) : null }))}
                                     />
                                   </div>
                                   <div className="flex items-center gap-2 pb-2">

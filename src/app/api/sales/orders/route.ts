@@ -109,6 +109,12 @@ export async function POST(request: Request) {
       grammage: it.grammage ? Number(it.grammage) : undefined,
       diameter: it.diameter ? Number(it.diameter) : undefined,
       tube: it.tube ? Number(it.tube) : undefined,
+      clientOrderNumber: it.clientOrderNumber || undefined,
+      clientOrderItemNumber: it.clientOrderItemNumber ? Number(it.clientOrderItemNumber) : undefined,
+      itemDeliveryDate: it.itemDeliveryDate ? new Date(it.itemDeliveryDate) : undefined,
+      internalResin: !!it.internalResin,
+      externalResin: !!it.externalResin,
+      creases: it.creases || undefined,
       lineTotal,
     };
   });

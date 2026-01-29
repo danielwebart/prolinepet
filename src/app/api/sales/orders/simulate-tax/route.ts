@@ -1,53 +1,58 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '../../../../../../lib/prisma';
+import { prisma } from '../../../../../lib/prisma';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '../../../../../../lib/auth';
+import { authOptions } from '../../../../../lib/auth';
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
     const userId = session?.user ? Number((session.user as any).id) : null;
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    // Fetch user settings for integration mode
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { erpIntegrationMode: true }
-    });
-    const integrationRoute = user?.erpIntegrationMode === 'PROD' ? 'prd' : 'tst';
+    const body = await request.json();
+    const { 
+        customerName,
+        customerDoc,
+        paymentTerms,
+        deliveryDate,
+        items,
+        notes
+    } = body || {};
 
-    const id = Number(params.id);
-    
-    // Fetch order with related data
-    const order = await prisma.salesOrder.findUnique({
-      where: { id },
-      include: {
-        entity: true,
-        client: true,
-        items: {
-          include: {
-            inventoryItem: true
-          }
-        }
-      }
-    });
-
-    if (!order) {
-      return NextResponse.json({ error: 'Pedido não encontrado' }, { status: 404 });
+    if (!items || !Array.isArray(items) || items.length === 0) {
+        return NextResponse.json({ error: 'Itens são obrigatórios' }, { status: 400 });
     }
 
-    // Extract Payment Terms Code (assuming format "[code] description")
+    // Fetch user settings for integration mode and entity
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { erpIntegrationMode: true, lastEntityId: true }
+    });
+    const integrationRoute = user?.erpIntegrationMode === 'PROD' ? 'prd' : 'tst';
+    
+    // Fetch Entity for entityDoc
+    let entityDoc = '';
+    if (user?.lastEntityId) {
+        const entity = await prisma.entity.findUnique({
+            where: { id: user.lastEntityId },
+            select: { cnpj: true }
+        });
+        entityDoc = (entity?.cnpj || '').replace(/\D/g, '');
+    }
+
+    // Extract Payment Terms Code
     let paymentTermsErp = 30; // Default
-    if (order.paymentTerms) {
-        const match = order.paymentTerms.match(/^\[(\d+)\]/);
+    if (paymentTerms) {
+        const match = paymentTerms.match(/^\[(\d+)\]/);
         if (match && match[1]) {
             paymentTermsErp = parseInt(match[1], 10);
         }
     }
 
-    const customerDocRaw = order.client?.doc || order.customerDoc || '';
+    const customerDocRaw = customerDoc || '';
 
     // Construct Payload
+    // Note: Since the order is not saved, we use 0 or dummy values for IDs
     const payload = {
       route: integrationRoute,
       module: "mpd",
@@ -59,16 +64,16 @@ export async function POST(request: Request, { params }: { params: { id: string 
           salesChannel: 1,
           paymentTermsErp: paymentTermsErp,
           branchId: "01",
-          id: order.id,
-          code: order.code,
+          id: 0, // No ID yet
+          code: "SIMULACAO", // Dummy code
           customerDoc: customerDocRaw.replace(/\D/g, ''),
           discountOrd: "0",
-          deliveryDate: order.deliveryDate ? order.deliveryDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          observ: order.notes || "Simulação via Portal",
-          entityDoc: (order.entity?.cnpj || '').replace(/\D/g, '')
+          deliveryDate: deliveryDate ? new Date(deliveryDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          observ: notes || "Simulação via Portal (Novo Pedido)",
+          entityDoc: entityDoc
         },
-        orderitem: order.items.map(item => ({
-          orderId: order.id,
+        orderitem: items.map((item: any, index: number) => ({
+          orderId: 0,
           sku: item.sku || item.inventoryItem?.sku || "",
           quantity: item.quantity,
           diameter: item.diameter || 0,
@@ -78,14 +83,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
           length: item.length || 0,
           clientOrderNumber: item.clientOrderNumber || "",
           clientOrderItemNumber: item.clientOrderItemNumber || 0,
-          deliveryDate: item.itemDeliveryDate ? item.itemDeliveryDate.toISOString().split('T')[0] : "",
+          deliveryDate: item.itemDeliveryDate ? new Date(item.itemDeliveryDate).toISOString().split('T')[0] : "",
           externalResin: item.externalResin || false,
           internalResin: item.internalResin ? "S" : "N"
         }))
       }
     };
 
-    console.log('Simulate Tax Payload:', JSON.stringify(payload, null, 2));
+    console.log('Simulate Tax Payload (New Order):', JSON.stringify(payload, null, 2));
 
     // Call External API
     const response = await fetch('http://cvserver13:8484/apiIntegrTotvsDts/', {
@@ -107,22 +112,6 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }
 
     const data = await response.json();
-
-    // Parse total with tax from response
-    let totalWithTax = 0;
-    if (data && data.vltotcomimp !== undefined) {
-      totalWithTax = Number(data.vltotcomimp);
-    }
-
-    // Atualizar timestamp da última simulação e total com impostos
-    await prisma.salesOrder.update({
-      where: { id: order.id },
-      data: { 
-        lastTaxSimulation: new Date(),
-        totalWithTax: totalWithTax
-      }
-    });
-
     return NextResponse.json(data);
 
   } catch (err: any) {

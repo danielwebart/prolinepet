@@ -74,7 +74,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   };
   return (
     <div className="flex">
-      <Sidebar perms={perms} mobileOpen={mobileMenuOpen} setMobileOpen={setMobileMenuOpen} />
+      <Sidebar perms={perms} mobileOpen={mobileMenuOpen} setMobileOpen={setMobileMenuOpen} pathname={pathname} />
       <main className="flex-1 min-h-screen">
         {/* Top bar com seletor de entidade */}
         <div className="sticky top-0 z-10 bg-white border-b border-gray-200 p-3 flex items-center gap-3">
@@ -128,7 +128,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <div className="p-6">
-          <ProgramGuard perms={perms}>
+          <ProgramGuard perms={perms} pathname={pathname}>
             {children}
           </ProgramGuard>
         </div>

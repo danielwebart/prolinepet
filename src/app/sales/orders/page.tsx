@@ -238,7 +238,10 @@ export default function SalesOrdersPage() {
                           <ReturnIcon />
                         </IconBtn>
                       ) : (
-                        <IconBtn title="Enviar para o ERP" onClick={async () => {
+                        <IconBtn 
+                          title="Enviar para o ERP" 
+                          disabled={!['Orçamento', 'Erro na integração'].includes(statusLabelPt(o.status))}
+                          onClick={async () => {
                           try {
                             const r = await fetch(`/api/sales/orders/${o.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Aguardando Integração' }) });
                             if (!r.ok) throw new Error('Falha ao atualizar status');
@@ -247,7 +250,7 @@ export default function SalesOrdersPage() {
                           } catch (e: any) { alert(e?.message || String(e)); }
                         }}> <SendIcon /> </IconBtn>
                       )}
-                      <IconBtn title="Excluir" disabled={o.status !== 'Orçamento'} onClick={async () => {
+                      <IconBtn title="Excluir" disabled={!['Orçamento', 'Erro na integração'].includes(statusLabelPt(o.status))} onClick={async () => {
                         if (!confirm('Confirma excluir este pedido?')) return;
                         try {
                           const r = await fetch(`/api/sales/orders/${o.id}`, { method: 'DELETE' });

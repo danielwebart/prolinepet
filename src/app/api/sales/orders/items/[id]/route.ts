@@ -29,6 +29,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     if (body.tube !== undefined) allowed.tube = Number(body.tube);
     if (body.discountPct !== undefined) allowed.discountPct = Number(body.discountPct);
     if (body.clientOrderNumber !== undefined) allowed.clientOrderNumber = String(body.clientOrderNumber);
+    if (body.clientOrderItemNumber !== undefined) allowed.clientOrderItemNumber = Number(body.clientOrderItemNumber);
+    if (body.itemDeliveryDate !== undefined) allowed.itemDeliveryDate = body.itemDeliveryDate ? new Date(body.itemDeliveryDate) : null;
     if (body.internalResin !== undefined) allowed.internalResin = Boolean(body.internalResin);
     if (body.externalResin !== undefined) allowed.externalResin = Boolean(body.externalResin);
     if (body.creases !== undefined) allowed.creases = body.creases;

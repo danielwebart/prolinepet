@@ -26,6 +26,8 @@ type OrderItem = {
   tube?: number | null;
   inventoryItem?: InventoryItem | null;
   clientOrderNumber?: string | null;
+  clientOrderItemNumber?: number | null;
+  itemDeliveryDate?: string | Date | null;
   internalResin?: boolean;
   externalResin?: boolean;
   creases?: Record<string, number> | null;
@@ -192,6 +194,7 @@ function NewSalesOrderContent() {
   });
 
   const [loading, setLoading] = useState(false);
+  const [simulating, setSimulating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   useEffect(() => {
@@ -297,6 +300,8 @@ function NewSalesOrderContent() {
       diameter: it.diameter ?? undefined,
       tube: it.tube ?? undefined,
       clientOrderNumber: it.clientOrderNumber ?? undefined,
+      clientOrderItemNumber: it.clientOrderItemNumber ?? undefined,
+      itemDeliveryDate: it.itemDeliveryDate ?? undefined,
       internalResin: it.internalResin ?? false,
       externalResin: it.externalResin ?? false,
       creases: it.creases ?? {},
@@ -315,6 +320,7 @@ function NewSalesOrderContent() {
     }));
     setEditingId(null); 
     setDraft({});
+    setShowFeaturesFor(null);
   };
 
   const saveOrder = async () => {
@@ -330,10 +336,14 @@ function NewSalesOrderContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customerName: order.customerName,
+          customerDoc: order.customerDoc,
           paymentTerms: order.paymentTerms,
           deliveryDate: order.deliveryDate,
           items: order.items?.map(it => ({
             inventoryItemId: it.inventoryItem?.id,
+            name: it.name,
+            sku: it.sku,
+            unit: it.unit,
             quantity: it.quantity,
             unitPrice: it.unitPrice,
             discountPct: it.discountPct,
@@ -343,6 +353,8 @@ function NewSalesOrderContent() {
             diameter: it.diameter,
             tube: it.tube,
             clientOrderNumber: it.clientOrderNumber,
+            clientOrderItemNumber: it.clientOrderItemNumber,
+            itemDeliveryDate: it.itemDeliveryDate,
             internalResin: it.internalResin,
             externalResin: it.externalResin,
             creases: it.creases
@@ -368,7 +380,7 @@ function NewSalesOrderContent() {
   const fmtNumber = (n: number | undefined) => (n ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmtInt = (n: number | undefined) => Math.round(n ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 
-  const handleSimulateTaxes = () => {
+  const handleSimulateTaxes = async () => {
     const items = order.items || [];
     if (items.length === 0) {
       alert('Adicione pelo menos um item para simular impostos.');
@@ -380,10 +392,28 @@ function NewSalesOrderContent() {
       return;
     }
 
-    // Placeholder logic for development
-    // In the future, this should fetch tax calculations from the backend
-    setTotalWithTax(globalTotalNoTax); 
-    alert('Simulação de impostos realizada (Mock). Funcionalidade em desenvolvimento.');
+    setSimulating(true);
+    try {
+      const res = await fetch('/api/sales/orders/simulate-tax', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(order)
+      });
+      
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Falha na simulação');
+      }
+      
+      const data = await res.json();
+      if (data && data.vltotcomimp !== undefined) {
+        setTotalWithTax(Number(data.vltotcomimp));
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSimulating(false);
+    }
   };
 
   const computeWeightKg = (it: OrderItem, useDraft = false): number => {
@@ -526,9 +556,14 @@ function NewSalesOrderContent() {
               </div>
             </div>
             <div className="ml-auto flex gap-2">
-              <button className="flex items-center gap-1 px-3 py-1 text-sm bg-gray-100 border border-gray-300 rounded shadow-sm text-gray-700 hover:bg-gray-200" title="Simulação de impostos" onClick={handleSimulateTaxes}>
+              <button 
+                className={`flex items-center gap-1 px-3 py-1 text-sm bg-gray-100 border border-gray-300 rounded shadow-sm text-gray-700 hover:bg-gray-200 ${simulating ? 'opacity-50 cursor-wait' : ''}`} 
+                title="Simulação de impostos" 
+                onClick={handleSimulateTaxes}
+                disabled={simulating}
+              >
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                Simular Impostos
+                {simulating ? 'Simulando...' : 'Simular Impostos'}
               </button>
               {/* Send to ERP - Disabled */}
               <button className={`${ICON_BTN} opacity-50 cursor-not-allowed`} title="Enviar para ERP (Desabilitado)" disabled>
@@ -733,6 +768,26 @@ function NewSalesOrderContent() {
                                       disabled={!isEditing}
                                       value={isEditing ? (draft.clientOrderNumber ?? '') : (it.clientOrderNumber ?? '')}
                                       onChange={(e) => setDraft(d => ({ ...d, clientOrderNumber: e.target.value }))}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-xs text-gray-600 block">Item Pedido</label>
+                                    <input 
+                                      type="number" 
+                                      className="w-24 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
+                                      disabled={!isEditing}
+                                      value={isEditing ? (draft.clientOrderItemNumber ?? '') : (it.clientOrderItemNumber ?? '')}
+                                      onChange={(e) => setDraft(d => ({ ...d, clientOrderItemNumber: e.target.value ? Number(e.target.value) : null }))}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-xs text-gray-600 block">Data Entrega</label>
+                                    <input 
+                                      type="date" 
+                                      className="w-32 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
+                                      disabled={!isEditing}
+                                      value={isEditing ? (draft.itemDeliveryDate ? new Date(draft.itemDeliveryDate).toISOString().split('T')[0] : '') : (it.itemDeliveryDate ? new Date(it.itemDeliveryDate).toISOString().split('T')[0] : '')}
+                                      onChange={(e) => setDraft(d => ({ ...d, itemDeliveryDate: e.target.value ? new Date(e.target.value) : null }))}
                                     />
                                   </div>
                                   <div className="flex items-center gap-2 pb-2">

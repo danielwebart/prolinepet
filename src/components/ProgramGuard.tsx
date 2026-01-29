@@ -1,6 +1,5 @@
 "use client";
 import React from "react";
-import { usePathname } from "next/navigation";
 
 type Program = { code: string; name: string };
 type ModulePerm = { code: string; name: string; programs: Program[] };
@@ -32,8 +31,7 @@ function pathToProgramCode(pathname: string): string | null {
   return null;
 }
 
-export default function ProgramGuard({ perms, children }: { perms: Permissions | null; children: React.ReactNode }) {
-  const pathname = usePathname();
+export default function ProgramGuard({ perms, children, pathname }: { perms: Permissions | null; children: React.ReactNode; pathname: string | null }) {
   const code = pathname ? pathToProgramCode(pathname) : null;
   if (!code || !perms || !perms.activeEntityId) return <>{children}</>;
   const allowed = perms.modules.some((m) => m.programs.some((p) => p.code === code));

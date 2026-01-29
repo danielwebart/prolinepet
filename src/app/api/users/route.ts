@@ -32,7 +32,7 @@ export async function GET(request: Request) {
   await ensureUserDocColumn();
   const whereSql = onlyReps ? `WHERE ("salesRepAdmin"=TRUE OR "salesRepAdmin"=1)` : '';
   const rows: any[] = await prisma.$queryRawUnsafe(
-    `SELECT id, name, email, doc, "salesRepAdmin", "createdAt", "updatedAt" FROM "User" ${whereSql} ORDER BY name ASC`
+    `SELECT id, name, email, doc, "salesRepAdmin", "erpIntegrationMode", "createdAt", "updatedAt" FROM "User" ${whereSql} ORDER BY name ASC`
   );
   return NextResponse.json(rows);
 }
@@ -40,22 +40,25 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   await ensureUserDocColumn();
   const data = await request.json();
-  const { name, email, password } = data || {};
+  const { name, email, password, erpIntegrationMode } = data || {};
   const doc = normalizeDoc(String((data as any)?.doc || '')) || null;
   const hashed = await bcrypt.hash(password, 10);
   if (doc) {
     const rows: any[] = await prisma.$queryRawUnsafe(`SELECT id FROM "User" WHERE doc='${doc}' LIMIT 1`);
     const exists = rows[0]?.id as number | undefined;
     if (exists) {
-      await prisma.$executeRawUnsafe(`UPDATE "User" SET name='${String(name).replace(/'/g,"''")}', email='${String(email).replace(/'/g,"''")}', password='${String(hashed).replace(/'/g,"''")}', "updatedAt"=CURRENT_TIMESTAMP WHERE doc='${doc}'`);
-      const updated: any[] = await prisma.$queryRawUnsafe(`SELECT id, name, email, doc, "salesRepAdmin", "createdAt", "updatedAt" FROM "User" WHERE doc='${doc}' LIMIT 1`);
+      await prisma.$executeRawUnsafe(`UPDATE "User" SET name='${String(name).replace(/'/g,"''")}', email='${String(email).replace(/'/g,"''")}', password='${String(hashed).replace(/'/g,"''")}', "erpIntegrationMode"='${String(erpIntegrationMode || 'TEST').replace(/'/g,"''")}', "updatedAt"=CURRENT_TIMESTAMP WHERE doc='${doc}'`);
+      const updated: any[] = await prisma.$queryRawUnsafe(`SELECT id, name, email, doc, "salesRepAdmin", "erpIntegrationMode", "createdAt", "updatedAt" FROM "User" WHERE doc='${doc}' LIMIT 1`);
       return NextResponse.json(updated[0]);
     }
-    await prisma.$executeRawUnsafe(`INSERT INTO "User"(name,email,password,doc,"createdAt","updatedAt","salesRepAdmin") VALUES ('${String(name).replace(/'/g,"''")}','${String(email).replace(/'/g,"''")}','${String(hashed).replace(/'/g,"''")}','${doc}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, false)`);
-    const created: any[] = await prisma.$queryRawUnsafe(`SELECT id, name, email, doc, "salesRepAdmin", "createdAt", "updatedAt" FROM "User" WHERE doc='${doc}' LIMIT 1`);
+    await prisma.$executeRawUnsafe(`INSERT INTO "User"(name,email,password,doc,"createdAt","updatedAt","salesRepAdmin","erpIntegrationMode") VALUES ('${String(name).replace(/'/g,"''")}','${String(email).replace(/'/g,"''")}','${String(hashed).replace(/'/g,"''")}','${doc}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, false, '${String(erpIntegrationMode || 'TEST').replace(/'/g,"''")}')`);
+    const created: any[] = await prisma.$queryRawUnsafe(`SELECT id, name, email, doc, "salesRepAdmin", "erpIntegrationMode", "createdAt", "updatedAt" FROM "User" WHERE doc='${doc}' LIMIT 1`);
     return NextResponse.json(created[0]);
   }
-  const created = await prisma.user.create({ data: { name, email, password: hashed }, select: { id: true, name: true, email: true, createdAt: true, updatedAt: true, salesRepAdmin: true } });
+  const created = await prisma.user.create({ 
+    data: { name, email, password: hashed, erpIntegrationMode: erpIntegrationMode || 'TEST' }, 
+    select: { id: true, name: true, email: true, createdAt: true, updatedAt: true, salesRepAdmin: true, erpIntegrationMode: true } 
+  });
   return NextResponse.json(created);
 }
 

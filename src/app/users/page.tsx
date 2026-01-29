@@ -149,6 +149,21 @@ export default function UsersPage() {
     finally { setLoading(false); }
   };
 
+  const setErpMode = async (mode: string) => {
+    if (!selectedUserId) return;
+    setLoading(true); setErr(null);
+    try {
+      const res = await fetch(`/api/users/${selectedUserId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ erpIntegrationMode: mode })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
+      await loadUsers();
+      setSelectedUserId(data.id);
+    } catch (e: any) { setErr(e?.message || String(e)); }
+    finally { setLoading(false); }
+  };
+
   const deleteSelectedUser = async () => {
     if (!selectedUserId) return;
     const ok = typeof window !== 'undefined' ? window.confirm('Excluir este usuário e remover todos os vínculos?') : true;
@@ -401,6 +416,36 @@ export default function UsersPage() {
           />
           Representante/Adm Vendas
         </label>
+      </div>
+      )}
+
+      {formOpen && (
+      <div className="bg-white rounded border p-3">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="font-medium">Integração com ERP</h2>
+        </div>
+        <div className="flex gap-4">
+            <label className="text-xs flex items-center gap-1">
+              <input
+                type="radio"
+                name="erpMode"
+                disabled={!selectedUser}
+                checked={selectedUser?.erpIntegrationMode === 'PROD'}
+                onChange={() => setErpMode('PROD')}
+              />
+              Produção
+            </label>
+            <label className="text-xs flex items-center gap-1">
+              <input
+                type="radio"
+                name="erpMode"
+                disabled={!selectedUser}
+                checked={!selectedUser?.erpIntegrationMode || selectedUser?.erpIntegrationMode === 'TEST'}
+                onChange={() => setErpMode('TEST')}
+              />
+              Teste
+            </label>
+        </div>
       </div>
       )}
 

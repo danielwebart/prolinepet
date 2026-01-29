@@ -9,6 +9,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const userId = session?.user ? Number((session.user as any).id) : null;
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    // Fetch user settings for integration mode
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { erpIntegrationMode: true }
+    });
+    const integrationRoute = user?.erpIntegrationMode === 'PROD' ? 'prd' : 'tst';
+
     const id = Number(params.id);
     
     // Fetch order with related data
@@ -42,7 +49,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     // Construct Payload
     const payload = {
-      route: "tst",
+      route: integrationRoute,
       module: "mpd",
       version: "v1",
       resource: "inserePedido",
@@ -70,6 +77,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
           width: item.width || 0,
           length: item.length || 0,
           clientOrderNumber: item.clientOrderNumber || "",
+          clientOrderItemNumber: item.clientOrderItemNumber || 0,
+          deliveryDate: item.itemDeliveryDate ? item.itemDeliveryDate.toISOString().split('T')[0] : "",
           externalResin: item.externalResin || false,
           internalResin: item.internalResin ? "S" : "N"
         }))
@@ -134,8 +143,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }
 
     // Update Order
-    // We update if status changed OR if we have messages to record
-    if (newStatus !== order.status || messages.length > 0) {
+    // Logic modified: If status changes, create new history. If status is same, update latest history.
+    if (newStatus !== order.status) {
         await prisma.salesOrder.update({
             where: { id: order.id },
             data: {
@@ -148,6 +157,32 @@ export async function POST(request: Request, { params }: { params: { id: string 
                 }
             }
         });
+    } else {
+        // Status unchanged
+        const lastHistory = await prisma.salesOrderStatusHistory.findFirst({
+            where: { orderId: order.id },
+            orderBy: { changedAt: 'desc' }
+        });
+
+        if (lastHistory) {
+            // Update existing history record
+            await prisma.salesOrderStatusHistory.update({
+                where: { id: lastHistory.id },
+                data: {
+                    changedAt: new Date(),
+                    messages: messages
+                }
+            });
+        } else {
+            // No history exists (edge case), create one
+            await prisma.salesOrderStatusHistory.create({
+                data: {
+                    orderId: order.id,
+                    status: newStatus,
+                    messages: messages
+                }
+            });
+        }
     }
 
     return NextResponse.json({ ...data, newStatus, messages });

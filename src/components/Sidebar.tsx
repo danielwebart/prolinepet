@@ -1,8 +1,7 @@
 "use client";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
-import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 type NavItem = { href: string; label: string; icon: React.ReactNode };
 type Program = { code: string; name: string };
@@ -97,8 +96,7 @@ function programHref(code: string): string | null {
   }
 }
 
-export default function Sidebar({ perms, mobileOpen, setMobileOpen }: { perms: Permissions; mobileOpen?: boolean; setMobileOpen?: (v: boolean) => void }) {
-  const pathname = usePathname();
+export default function Sidebar({ perms, mobileOpen, setMobileOpen, pathname }: { perms: Permissions; mobileOpen?: boolean; setMobileOpen?: (v: boolean) => void; pathname: string | null }) {
   const [collapsed, setCollapsed] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
