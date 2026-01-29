@@ -197,7 +197,7 @@ export default function SalesOrdersPage() {
                 <th className="text-left px-3 py-2">Número</th>
                 <th className="text-left px-3 py-2">Cliente</th>
                 <th className="text-left px-3 py-2">Data</th>
-                <th className="text-right px-3 py-2">Total</th>
+                <th className="text-right px-3 py-2">Total Com Imp R$</th>
                 <th className="text-left px-3 py-2">Situação</th>
                 <th className="text-center px-3 py-2">Ações</th>
               </tr>
@@ -214,7 +214,13 @@ export default function SalesOrdersPage() {
                   <td className="px-3 py-2 font-mono text-xs">{o.code || o.id}</td>
                   <td className="px-3 py-2">{o.customerName || '-'}</td>
                   <td className="px-3 py-2">{o.orderDate ? new Date(o.orderDate).toLocaleDateString('pt-BR') : '-'}</td>
-                  <td className="px-3 py-2 text-right">{(o.total ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                  <td className="px-3 py-2 text-right">
+                    {((o.items || []).reduce((acc, item) => {
+                      const total = item.quantity * item.unitPrice;
+                      const discount = total * (item.discountPct / 100);
+                      return acc + (total - discount);
+                    }, 0)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </td>
                   <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded text-xs ${statusColor(statusLabelPt(o.status))}`}>{statusLabelPt(o.status)}</span></td>
                   <td className="px-3 py-2 text-center">
                     <div className="inline-flex">

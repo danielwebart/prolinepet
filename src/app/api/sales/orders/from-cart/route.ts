@@ -9,6 +9,7 @@ export async function POST(request: Request) {
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     
     const createdById = session?.user ? Number((session.user as any).id) : undefined;
+    const entityId = (session as any).activeEntityId ? Number((session as any).activeEntityId) : undefined;
     const body = await request.json();
     const { clientId } = body;
 
@@ -70,6 +71,8 @@ export async function POST(request: Request) {
                 status: 'Orçamento',
                 customerName: client.name,
                 customerDoc: client.doc,
+                clientId: client.id,
+                entityId,
                 paymentTerms: lastOrder?.paymentTerms,
                 createdById,
                 subtotal,

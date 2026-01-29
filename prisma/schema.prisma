@@ -133,6 +133,7 @@ model Entity {
   entityModules   EntityModule[]
   usersLastEntity User[]         @relation("UserLastEntity")
   userEntities    UserEntity[]
+  salesOrders     SalesOrder[]
 }
 
 model Module {
@@ -229,6 +230,8 @@ model SalesOrder {
   carrier       String?
   deliveryDate  DateTime?
   notes         String?
+  entityId      Int?
+  entity        Entity?          @relation(fields: [entityId], references: [id])
   createdById   Int?
   subtotal      Float            @default(0)
   discountTotal Float            @default(0)
@@ -238,6 +241,10 @@ model SalesOrder {
   createdBy     User?            @relation(fields: [createdById], references: [id])
   items         SalesOrderItem[]
   statusHistory SalesOrderStatusHistory[]
+  clientId      Int?
+  client          Client?          @relation(fields: [clientId], references: [id])
+  lastTaxSimulation DateTime?
+  totalWithTax    Float            @default(0)
 }
 
 model SalesOrderStatusHistory {
@@ -311,6 +318,7 @@ model Client {
   reps       UserClientRep[]
   items      ClientItem[]
   cartItems  ClientCartItem[]
+  orders     SalesOrder[]
 
   @@index([name])
   @@index([cidade, estado])

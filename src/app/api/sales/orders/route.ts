@@ -3,13 +3,51 @@ import { prisma } from '../../../../lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../lib/auth';
 
+function normalizeDoc(doc: string): string {
+  return (doc || '').replace(/\D+/g, '');
+}
+
 export async function GET(request: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    const userId = session?.user ? Number((session.user as any).id) : null;
+    if (!userId) return NextResponse.json([]);
+
     const url = new URL(request.url);
-    const doc = url.searchParams.get('doc') || undefined;
+    const requestedDocRaw = url.searchParams.get('doc');
+    const requestedDoc = requestedDocRaw ? normalizeDoc(requestedDocRaw) : undefined;
+
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { salesRepAdmin: true } });
+    const hasLinks = Boolean(await prisma.userClientRep.findFirst({ where: { userId }, select: { id: true } }));
+    const shouldRestrict = Boolean(user?.salesRepAdmin) || hasLinks;
+
+    let where: any = requestedDoc ? { customerDoc: requestedDoc } : undefined;
+
+    if (shouldRestrict) {
+      const links = await prisma.userClientRep.findMany({
+        where: { userId },
+        select: { client: { select: { doc: true } } }
+      });
+      const allowedDocs = Array.from(
+        new Set(
+          links
+            .map((l) => normalizeDoc(String(l.client?.doc || '')))
+            .filter((d) => d.length > 0)
+        )
+      );
+
+      if (allowedDocs.length === 0) return NextResponse.json([]);
+
+      if (requestedDoc) {
+        if (!allowedDocs.includes(requestedDoc)) return NextResponse.json([]);
+        where = { customerDoc: requestedDoc };
+      } else {
+        where = { customerDoc: { in: allowedDocs } };
+      }
+    }
 
     const data = await prisma.salesOrder.findMany({
-      where: doc ? { customerDoc: doc } : undefined,
+      where,
       include: {
         items: {
           include: {
@@ -32,6 +70,12 @@ export async function POST(request: Request) {
   const body = await request.json();
   const session = await getServerSession(authOptions);
   const createdById = session?.user ? Number((session.user as any).id) : undefined;
+
+  let entityId: number | undefined;
+  if (createdById) {
+    const u = await prisma.user.findUnique({ where: { id: createdById }, select: { lastEntityId: true } });
+    if (u?.lastEntityId) entityId = u.lastEntityId;
+  }
 
   const {
     customerName,
@@ -78,6 +122,7 @@ export async function POST(request: Request) {
   const created = await prisma.salesOrder.create({
     data: {
       code,
+      entityId,
       customerName,
       customerDoc: customerDoc || undefined,
       paymentTerms: paymentTerms || undefined,

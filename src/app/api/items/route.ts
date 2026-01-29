@@ -7,12 +7,36 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const clientIdParam = url.searchParams.get('clientId');
+    const customerDocParam = url.searchParams.get('customerDoc');
+    const customerNameParam = url.searchParams.get('customerName');
     const qParam = url.searchParams.get('q');
 
+    let filterClientId: number | null = null;
+
     if (clientIdParam) {
-      const cId = Number(clientIdParam);
+      filterClientId = Number(clientIdParam);
+    } else if (customerDocParam) {
+      const doc = customerDocParam.replace(/\D/g, '');
+      const client = await prisma.client.findFirst({ where: { doc } });
+      if (client) {
+        filterClientId = client.id;
+      } else {
+        // Se foi passado documento mas não achou cliente, retorna vazio para não trazer todos os itens
+        return NextResponse.json([]);
+      }
+    } else if (customerNameParam) {
+      const name = customerNameParam.trim();
+      const client = await prisma.client.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
+      if (client) {
+        filterClientId = client.id;
+      } else {
+         return NextResponse.json([]);
+      }
+    }
+
+    if (filterClientId) {
       const links = await prisma.clientItem.findMany({
-        where: { clientId: cId, allowed: true },
+        where: { clientId: filterClientId, allowed: true },
         include: { 
           inventoryItem: {
             include: { commercialFamily: true }

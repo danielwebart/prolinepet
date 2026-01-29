@@ -45,6 +45,9 @@ type SalesOrder = {
   discountTotal: number;
   total: number;
   items?: OrderItem[];
+  entity?: { name: string; cnpj: string } | null;
+  lastTaxSimulation?: string | null;
+  totalWithTax?: number;
 };
 
 const ICON_BTN = "inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700";
@@ -236,6 +239,44 @@ export default function SalesOrderMaintenancePage() {
   const [searchResults, setSearchResults] = useState<InventoryItem[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [simulatedTotal, setSimulatedTotal] = useState<number | null>(null);
+  const [simulating, setSimulating] = useState(false);
+  const [integrating, setIntegrating] = useState(false);
+
+  const handleSimulateTaxes = async () => {
+    if (!order) return;
+    setSimulating(true);
+    try {
+      const res = await fetch(`/api/sales/orders/${order.id}/simulate-tax`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json();
+        if (err.payloadSent) {
+           console.error('Payload falha simulação:', err.payloadSent);
+           alert(`Erro: ${err.error}\n\nVeja o console (F12) para o JSON completo.\n\nInicio do JSON:\n${JSON.stringify(err.payloadSent).substring(0, 500)}...`);
+           return;
+        }
+        throw new Error(err.error || 'Erro na simulação');
+      }
+      const data = await res.json();
+      console.log('Simulation result:', data);
+      
+      if (data && data.vltotcomimp !== undefined) {
+         setSimulatedTotal(Number(data.vltotcomimp));
+         await refreshOrder();
+      } else if (data && data.RowErrors && Array.isArray(data.RowErrors)) {
+         const errors = data.RowErrors.map((e: any) => `- ${e.ErrorDescription || 'Erro desconhecido'}`).join('\n');
+         alert(`Erros retornados pelo ERP:\n\n${errors}`);
+      } else {
+         // Fallback check if it is nested in items or somewhere else?
+         // For now assume root level as per prompt "retorno do campo 'vltotcomimp'"
+         alert('Campo vltotcomimp não encontrado no retorno da API. Verifique o console.');
+      }
+    } catch (e: any) {
+      alert(e.message || String(e));
+    } finally {
+      setSimulating(false);
+    }
+  };
 
   const searchClientItems = async (term: string) => {
     if (!term) {
@@ -247,6 +288,11 @@ export default function SalesOrderMaintenancePage() {
     try {
       const params = new URLSearchParams();
       params.set('q', term);
+      if (order?.customerDoc) {
+        params.set('customerDoc', order.customerDoc);
+      } else if (order?.customerName) {
+        params.set('customerName', order.customerName);
+      }
       
       const res = await fetch(`/api/items?${params.toString()}`);
       if (res.ok) {
@@ -448,36 +494,55 @@ export default function SalesOrderMaintenancePage() {
           {/* Header do pedido com ícones à direita */}
           <div className="border rounded bg-white p-4 text-sm">
             <div className="flex items-start gap-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-1">
-                <div>
-                  <span className="text-gray-600">Número</span>
-                  <div className="font-mono mt-1">{order.code}</div>
+              <div className="flex flex-col gap-3 flex-1">
+                {/* Linha Superior: Número, Data, Entidade, Última Simulação */}
+                <div className="flex flex-wrap items-center gap-8">
+                  <div>
+                    <span className="text-gray-600">Número</span>
+                    <div className="font-mono mt-1">{order.code}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Data</span>
+                    <div className="mt-1">{new Date(order.orderDate).toLocaleDateString('pt-BR')}</div>
+                  </div>
+                  {order.entity && (
+                    <div>
+                      <span className="text-gray-600">Entidade</span>
+                      <div className="mt-1 font-medium">{order.entity.name}</div>
+                    </div>
+                  )}
+                  {order.lastTaxSimulation && (
+                     <div className="ml-auto">
+                       <span className="text-gray-600">Última simulação</span>
+                       <div className="mt-1">
+                         {new Date(order.lastTaxSimulation).toLocaleDateString('pt-BR')} - {new Date(order.lastTaxSimulation).toLocaleTimeString('pt-BR')}
+                       </div>
+                     </div>
+                  )}
                 </div>
-                <div>
-                  <span className="text-gray-600">Data</span>
-                  <div className="mt-1">{new Date(order.orderDate).toLocaleDateString('pt-BR')}</div>
-                </div>
-                <div className={!isHeaderEditing ? "opacity-75 pointer-events-none" : ""}>
-                   <AsyncSelect
-                      label="Cliente"
-                      value={hdrDraft.customerName ?? ''}
-                      onChange={(val) => setHdrDraft((d) => ({ ...d, customerName: val }))}
-                      onSelectObj={(item) => {
-                         setHdrDraft((d) => ({ ...d, customerName: item.name, customerDoc: item.document }));
-                      }}
-                      fetchUrl={(q) => `/api/base/clients?q=${q}`}
-                      placeholder="Pesquise por nome ou documento"
-                      getLabel={(item) => item.name}
-                      renderOption={(item) => (
-                        <div>
-                          <div className="font-medium">{item.name}</div>
-                          <div className="text-xs text-gray-500">{item.document}</div>
-                        </div>
-                      )}
-                    />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className={!isHeaderEditing ? "opacity-75 pointer-events-none" : ""}>
+
+                {/* Linha de Inputs: Cliente, Pagamento, Entrega */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mt-2">
+                  <div className={`md:col-span-6 ${!isHeaderEditing || (order.items && order.items.length > 0) || !['OPEN', 'Orçamento'].includes(order.status || '') ? "opacity-75 pointer-events-none" : ""}`}>
+                     <AsyncSelect
+                        label="Cliente"
+                        value={hdrDraft.customerName ?? ''}
+                        onChange={(val) => setHdrDraft((d) => ({ ...d, customerName: val }))}
+                        onSelectObj={(item) => {
+                           setHdrDraft((d) => ({ ...d, customerName: item.name, customerDoc: item.document }));
+                        }}
+                        fetchUrl={(q) => `/api/base/clients?q=${q}`}
+                        placeholder="Pesquise por nome ou documento"
+                        getLabel={(item) => item.name}
+                        renderOption={(item) => (
+                          <div>
+                            <div className="font-medium">{item.name}</div>
+                            <div className="text-xs text-gray-500">{item.document}</div>
+                          </div>
+                        )}
+                      />
+                  </div>
+                  <div className={`md:col-span-3 ${!isHeaderEditing ? "opacity-75 pointer-events-none" : ""}`}>
                     <AsyncSelect
                       label="Condição de pagamento"
                       value={hdrDraft.paymentTerms ?? ''}
@@ -497,19 +562,21 @@ export default function SalesOrderMaintenancePage() {
                       )}
                     />
                   </div>
-                  <div>
+                  <div className="md:col-span-3">
                     <span className="text-gray-600">Entrega</span>
                     <input type="date" className="mt-1 w-full px-2 py-1 border rounded" value={hdrDraft.deliveryDate ?? ''} onChange={(e) => setHdrDraft((d) => ({ ...d, deliveryDate: e.target.value }))} disabled={!isHeaderEditing} />
                   </div>
                 </div>
-                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-3">
+
+                {/* Totais */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-2">
                   <div>
                     <span className="text-gray-600">Total Sem Imp R$</span>
                     <div className="mt-1 w-full px-2 py-1 border rounded bg-gray-50 text-gray-800">{fmtCurrency(globalTotalNoTax)}</div>
                   </div>
                   <div>
                     <span className="text-gray-600">Total Com Imp R$</span>
-                    <div className="mt-1 w-full px-2 py-1 border rounded bg-gray-50 text-gray-800">{fmtCurrency(globalTotalNoTax)}</div>
+                    <div className="mt-1 w-full px-2 py-1 border rounded bg-yellow-100 text-gray-800 font-bold">{fmtCurrency(order.totalWithTax ?? 0)}</div>
                   </div>
                   <div>
                     <span className="text-gray-600">Total Peso (KG)</span>
@@ -518,22 +585,51 @@ export default function SalesOrderMaintenancePage() {
                 </div>
               </div>
               <div className="ml-auto flex gap-2">
-                <button className="flex items-center gap-1 px-3 py-1 text-sm bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" onClick={() => alert('Simulação de impostos: em desenvolvimento')}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                  Simular Impostos
+                <button 
+                  className="flex items-center gap-1 px-3 py-1 text-sm bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" 
+                  onClick={handleSimulateTaxes}
+                  disabled={simulating}
+                >
+                  {simulating ? 'Simulando...' : 'Simular Impostos'}
                 </button>
-                <button className={ICON_BTN} title="Enviar para ERP" aria-label="Enviar para ERP" onClick={async () => {
+
+                <button className={ICON_BTN} title="Enviar para ERP" aria-label="Enviar para ERP" disabled={integrating} onClick={async () => {
                   if (!order) return;
+                  if (!confirm('Confirma enviar este pedido para o ERP?')) return;
+                  setIntegrating(true);
                   try {
-                    const res = await fetch(`/api/sales/orders/${order.id}`, {
-                      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ status: 'Aguardando Integração', messages: ['Solicitado envio ao ERP via manutenção'] })
+                    const res = await fetch(`/api/sales/orders/${order.id}/integrate`, {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' }
                     });
-                    if (!res.ok) throw new Error('Falha ao enviar para ERP');
+                    if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.error || 'Falha ao enviar para ERP');
+                    }
+                    const data = await res.json();
+                    
+                    if (data.newStatus === 'Erro na integração') {
+                        alert('Houve erros na integração. Verifique o histórico de situação.');
+                    } else if (data.newStatus === 'Integrado') {
+                        alert('Pedido integrado com sucesso!');
+                    } else {
+                        alert('Envio realizado. Verifique o status atual.');
+                    }
+
                     await refreshOrder();
-                  } catch (e: any) { alert(e?.message || String(e)); }
+                  } catch (e: any) { 
+                      alert(e?.message || String(e)); 
+                  } finally {
+                      setIntegrating(false);
+                  }
                 }}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                  {integrating ? (
+                      <svg className="animate-spin h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                  ) : (
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                  )}
                 </button>
                 <button className={ICON_BTN} title="Excluir" aria-label="Excluir" onClick={async () => { if (!order) return; if (!confirm('Confirma excluir este pedido?')) return; const r = await fetch(`/api/sales/orders/${order.id}`, { method: 'DELETE' }); if (r.ok) router.push('/sales/orders'); }}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
@@ -673,7 +769,7 @@ export default function SalesOrderMaintenancePage() {
                               <td className="p-2">{showDiameterTube ? (isEditing ? (<input type="number" step="1" className="w-24 px-2 py-1 border rounded" value={draft.tube ?? it.tube ?? ''} onChange={(e) => setDraft((d) => ({ ...d, tube: parseInt(e.target.value || '0', 10) }))} />) : (fmtInt(it.tube ?? undefined))) : '-'}</td>
                             </>
                           )}
-                          <td className="p-2">{isEditing ? (<input type="text" className="w-20 px-2 py-1 border rounded" value={draft.quantity ?? ''} onChange={(e) => { const v = e.target.value.replace(/\D/g, ''); setDraft(d => ({ ...d, quantity: v === '' ? undefined : parseInt(v, 10) })) }} />) : it.quantity}</td>
+                          <td className="p-2">{isEditing ? (<input type="text" className="w-20 px-2 py-1 border rounded" value={draft.quantity ?? ''} onChange={(e) => { const v = e.target.value.replace(/\D/g, ''); setDraft(d => ({ ...d, quantity: v === '' ? undefined : parseInt(v, 10) })) }} />) : fmtInt(it.quantity)}</td>
                           <td className="p-2">{fmtInt(computeWeightKg(it, isEditing))}</td>
                           <td className="p-2">
                             {isEditing ? (

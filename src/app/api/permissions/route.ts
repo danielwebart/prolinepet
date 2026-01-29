@@ -35,7 +35,7 @@ export async function GET() {
           JOIN "UserEntity" ue ON ue."id"=uem."userEntityId"
           WHERE ue."userId"=${uid} AND ue."entityId"=${activeEntityId} AND uem."moduleId"=${m.id}
         `);
-        const moduleAllowed = um.length === 0 ? true : um.some((r: any) => Number(r.allowed) === 1);
+        const moduleAllowed = um.length === 0 ? false : um.some((r: any) => Number(r.allowed) === 1);
         if (!moduleAllowed) continue;
         // Programas liberados por entidade/módulo
         const progs: any[] = await prisma.$queryRawUnsafe(`
@@ -60,7 +60,7 @@ export async function GET() {
             JOIN "UserEntity" ue ON ue."id"=uem."userEntityId"
             WHERE ue."userId"=${uid} AND ue."entityId"=${activeEntityId} AND uem."moduleId"=${m.id} AND uemp."programId"=${p.id}
           `);
-          const programAllowed = up.length === 0 ? true : up.some((r: any) => Number(r.allowed) === 1);
+          const programAllowed = up.length === 0 ? false : up.some((r: any) => Number(r.allowed) === 1);
           if (programAllowed) allowedPrograms.push({ id: p.id, code: p.code, name: p.name });
         }
         if (allowedPrograms.length > 0) {

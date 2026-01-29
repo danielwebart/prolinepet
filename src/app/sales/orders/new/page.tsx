@@ -634,7 +634,7 @@ function NewSalesOrderContent() {
                               <td className="p-2">{showDiameterTube ? (isEditing ? (<input type="number" step="1" className="w-24 px-2 py-1 border rounded" value={draft.tube ?? it.tube ?? ''} onChange={(e) => setDraft((d) => ({ ...d, tube: parseInt(e.target.value || '0', 10) }))} />) : (fmtInt(it.tube ?? undefined))) : '-'}</td>
                             </>
                           )}
-                          <td className="p-2">{isEditing ? (<input type="text" className="w-20 px-2 py-1 border rounded" value={draft.quantity ?? ''} onChange={(e) => { const v = e.target.value.replace(/\D/g, ''); setDraft(d => ({ ...d, quantity: v === '' ? undefined : parseInt(v, 10) })) }} />) : it.quantity}</td>
+                          <td className="p-2">{isEditing ? (<input type="text" className="w-20 px-2 py-1 border rounded" value={draft.quantity ?? ''} onChange={(e) => { const v = e.target.value.replace(/\D/g, ''); setDraft(d => ({ ...d, quantity: v === '' ? undefined : parseInt(v, 10) })) }} />) : fmtInt(it.quantity)}</td>
                           <td className="p-2">{fmtInt(computeWeightKg(it, isEditing))}</td>
                           <td className="p-2">
                              {isEditing ? (

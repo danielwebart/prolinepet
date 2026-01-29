@@ -18,7 +18,16 @@ type Client = {
   titlesOverdue?: number;
 };
 type OrderItem = { id: number; sku?: string | null; name: string; unit?: string | null; quantity: number; unitPrice: number; discountPct: number };
-type SalesOrder = { id: number; code: string; orderDate: string; customerName: string; customerDoc?: string | null; total: number; items?: OrderItem[] };
+type SalesOrder = { 
+  id: number; 
+  code: string; 
+  status: string;
+  orderDate: string; 
+  customerName: string; 
+  customerDoc?: string | null; 
+  total: number; 
+  items?: OrderItem[];
+};
 type LinkedItem = { id: number; name: string; sku?: string | null; unit?: string | null; unitPrice?: number };
 type CartItem = { id: number; inventoryItemId: number; name: string; sku?: string | null; unit?: string | null; quantity: number; unitPrice: number };
 
@@ -34,6 +43,89 @@ export default function ClientDetailsPage() {
   const [expandItems, setExpandItems] = useState(false);
   const [showCart, setShowCart] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [selected, setSelected] = useState<SalesOrder | null>(null);
+
+  const statusColor = (s: string) => {
+    const v = (s || '').trim();
+    switch (v) {
+      case 'Orçamento': return 'bg-gray-100 text-gray-800';
+      case 'Aguardando Integração': return 'bg-yellow-100 text-yellow-800';
+      case 'Erro na integração': return 'bg-red-100 text-red-800';
+      case 'Integrado': return 'bg-blue-100 text-blue-800';
+      case 'Em fila produção': return 'bg-amber-100 text-amber-800';
+      case 'Em produção': return 'bg-indigo-100 text-indigo-800';
+      case 'Produzido/Estocado': return 'bg-cyan-100 text-cyan-800';
+      case 'Faturado': return 'bg-green-100 text-green-800';
+      case 'Cancelado': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const statusLabelPt = (s?: string) => {
+    const v = (s || '').trim().toUpperCase();
+    switch (v) {
+      case 'OPEN': return 'Orçamento';
+      case 'AGUARDANDO INTEGRAÇÃO':
+      case 'AGUARDANDO INTEGRACAO':
+      case 'AWAITING INTEGRATION': return 'Aguardando Integração';
+      case 'INTEGRADO':
+      case 'INTEGRATED': return 'Integrado';
+      case 'ERRO NA INTEGRAÇÃO':
+      case 'ERRO NA INTEGRACAO':
+      case 'INTEGRATION ERROR': return 'Erro na integração';
+      case 'EM FILA PRODUÇÃO':
+      case 'EM FILA PRODUCAO': return 'Em fila produção';
+      case 'EM PRODUÇÃO':
+      case 'EM PRODUCAO': return 'Em produção';
+      case 'PRODUZIDO/ESTOCADO': return 'Produzido/Estocado';
+      case 'FATURADO': return 'Faturado';
+      case 'CANCELADO': return 'Cancelado';
+      default: return s || '-';
+    }
+  };
+
+  const IconBtn = ({ title, onClick, children, disabled = false }: any) => (
+    <button
+      title={title}
+      onClick={disabled ? undefined : onClick}
+      className={`inline-flex items-center justify-center w-7 h-7 rounded border mr-1 ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  );
+
+  const EyeIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" strokeWidth="1.5" />
+      <circle cx="12" cy="12" r="3" strokeWidth="1.5" />
+    </svg>
+  );
+  const FileIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" strokeWidth="1.5" />
+      <path d="M14 2v6h6" strokeWidth="1.5" />
+    </svg>
+  );
+  const SendIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+      <path d="M22 2 11 13" strokeWidth="1.5" />
+      <path d="M22 2 15 22l-4-9-9-4Z" strokeWidth="1.5" />
+    </svg>
+  );
+  const ReturnIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+      <path d="M9 7 4 12l5 5" strokeWidth="1.5" />
+      <path d="M4 12h10a5 5 0 0 1 0 10h-3" strokeWidth="1.5" />
+    </svg>
+  );
+  const TrashIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+      <path d="M3 6h18" strokeWidth="1.5" />
+      <path d="M8 6V4h8v2" strokeWidth="1.5" />
+      <path d="M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14" strokeWidth="1.5" />
+    </svg>
+  );
 
   const refreshCart = async () => {
     if (!client) return;
@@ -254,34 +346,87 @@ export default function ClientDetailsPage() {
         </div>
       )}
 
-      <div className="border rounded bg-white">
-        <div className="p-2 text-xs text-gray-600 flex items-center justify-between">
+      <div className="bg-white rounded border border-gray-200 overflow-hidden">
+        <div className="px-3 py-2 border-b bg-gray-50 text-sm text-gray-700 flex items-center">
           <span>Pedidos do Cliente</span>
-          <a href={`/sales/orders/new?customerId=${client?.id || ''}`} className="px-2 py-1 bg-white border rounded hover:bg-gray-50 text-gray-700 text-xs font-medium no-underline">
-            + Novo Pedido
-          </a>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-gray-500">{orders.length} registro(s)</span>
+            <a href={`/sales/orders/new?customerId=${client?.id || ''}`} className="px-3 py-1.5 text-xs border rounded bg-white hover:bg-gray-100 no-underline text-gray-700 font-medium">
+              + Novo Pedido
+            </a>
+          </div>
         </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50">
-              <th className="p-2 text-left">Código</th>
-              <th className="p-2 text-left">Data</th>
-              <th className="p-2 text-left">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((o) => (
-              <tr key={o.id} className="border-t">
-                <td className="p-2">{o.code}</td>
-                <td className="p-2">{new Date(o.orderDate).toLocaleDateString('pt-BR')}</td>
-                <td className="p-2">{o.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-100 text-gray-700">
+              <tr>
+                <th className="text-left px-3 py-2">Número</th>
+                <th className="text-left px-3 py-2">Cliente</th>
+                <th className="text-left px-3 py-2">Data</th>
+                <th className="text-right px-3 py-2">Total Com Imp R$</th>
+                <th className="text-left px-3 py-2">Situação</th>
+                <th className="text-center px-3 py-2">Ações</th>
               </tr>
-            ))}
-            {orders.length === 0 && (
-              <tr><td className="p-3 text-gray-500" colSpan={3}>Sem pedidos</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {orders.length === 0 && (
+                <tr><td className="p-3 text-gray-500 text-center" colSpan={6}>Sem pedidos</td></tr>
+              )}
+              {orders.map((o) => (
+                <tr key={o.id} className="border-t hover:bg-gray-50">
+                  <td className="px-3 py-2 font-mono text-xs">{o.code || o.id}</td>
+                  <td className="px-3 py-2">{o.customerName || '-'}</td>
+                  <td className="px-3 py-2">{o.orderDate ? new Date(o.orderDate).toLocaleDateString('pt-BR') : '-'}</td>
+                  <td className="px-3 py-2 text-right">
+                    {((o.items || []).reduce((acc, item) => {
+                      const total = item.quantity * item.unitPrice;
+                      const discount = total * (item.discountPct / 100);
+                      return acc + (total - discount);
+                    }, 0)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </td>
+                  <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded text-xs ${statusColor(statusLabelPt(o.status))}`}>{statusLabelPt(o.status)}</span></td>
+                  <td className="px-3 py-2 text-center">
+                    <div className="inline-flex">
+                      <IconBtn title="Visualizar" onClick={() => setSelected(o)}><EyeIcon /></IconBtn>
+                      <IconBtn title="Detalhes" onClick={() => { window.location.href = `/sales/orders/${o.id}`; }}> <FileIcon /> </IconBtn>
+                      {o.status === 'Aguardando Integração' ? (
+                        <IconBtn title="Retornar para Orçamento" onClick={async () => {
+                          try {
+                            const r = await fetch(`/api/sales/orders/${o.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Orçamento' }) });
+                            if (!r.ok) throw new Error('Falha ao atualizar status');
+                            const updated = await r.json();
+                            setOrders((prev) => prev.map((so) => so.id === o.id ? { ...so, status: updated.status } : so));
+                          } catch (e: any) { alert(e?.message || String(e)); }
+                        }}>
+                          <ReturnIcon />
+                        </IconBtn>
+                      ) : (
+                        <IconBtn title="Enviar para o ERP" onClick={async () => {
+                          try {
+                            const r = await fetch(`/api/sales/orders/${o.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Aguardando Integração' }) });
+                            if (!r.ok) throw new Error('Falha ao atualizar status');
+                            const updated = await r.json();
+                            setOrders((prev) => prev.map((so) => so.id === o.id ? { ...so, status: updated.status } : so));
+                          } catch (e: any) { alert(e?.message || String(e)); }
+                        }}> <SendIcon /> </IconBtn>
+                      )}
+                      <IconBtn title="Excluir" disabled={o.status !== 'Orçamento'} onClick={async () => {
+                        if (!confirm('Confirma excluir este pedido?')) return;
+                        try {
+                          const r = await fetch(`/api/sales/orders/${o.id}`, { method: 'DELETE' });
+                          if (!r.ok) throw new Error('Falha ao excluir pedido');
+                          setOrders((prev) => prev.filter((so) => so.id !== o.id));
+                        } catch (e: any) { alert(e?.message || String(e)); }
+                      }}>
+                        <TrashIcon />
+                      </IconBtn>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="border rounded bg-white">
@@ -323,13 +468,52 @@ export default function ClientDetailsPage() {
               <tr><td className="p-3 text-gray-500" colSpan={5}>Sem itens</td></tr>
             )}
             {!expandItems && linkedItems.length > 0 && (
-               <tr><td className="p-2 text-center text-xs text-gray-500 italic" colSpan={5}>{linkedItems.length} itens ocultos...</td></tr>
+              <tr><td className="p-2 text-center text-xs text-gray-500 italic" colSpan={5}>{linkedItems.length} itens ocultos...</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
       
+      {/* Modal de itens */}
+      {selected && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50" onClick={() => setSelected(null)}>
+          <div className="bg-white w-full max-w-2xl rounded shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b flex items-center">
+              <div className="font-semibold">Itens do pedido {selected.code || selected.id}</div>
+              <button className="ml-auto text-gray-500 hover:text-black" onClick={() => setSelected(null)} aria-label="Fechar">×</button>
+            </div>
+            <div className="p-4">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-gray-700">
+                    <th className="text-left px-2 py-1">Item</th>
+                    <th className="text-right px-2 py-1">Qtd</th>
+                    <th className="text-right px-2 py-1">Preço</th>
+                    <th className="text-right px-2 py-1">Desc (%)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(selected.items || []).map((it) => (
+                    <tr key={it.id} className="border-t">
+                      <td className="px-2 py-1">{it.name}</td>
+                      <td className="px-2 py-1 text-right">{it.quantity}</td>
+                      <td className="px-2 py-1 text-right">{it.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                      <td className="px-2 py-1 text-right">{it.discountPct}%</td>
+                    </tr>
+                  ))}
+                  {(selected.items || []).length === 0 && (
+                    <tr><td colSpan={4} className="px-2 py-2 text-center text-gray-500">Sem itens</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-4 py-3 border-t text-right">
+              <button className="px-3 py-1.5 border rounded hover:bg-gray-100" onClick={() => setSelected(null)}>Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

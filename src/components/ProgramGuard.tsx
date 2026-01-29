@@ -7,7 +7,8 @@ type ModulePerm = { code: string; name: string; programs: Program[] };
 type Permissions = { activeEntityId: number | null; entities: { id: number; name: string }[]; modules: ModulePerm[] };
 
 function pathToProgramCode(pathname: string): string | null {
-  if (pathname === "/" || pathname.startsWith("/dashboard")) return "DASHBOARD";
+  // Dashboard is always allowed (content is filtered by page)
+  if (pathname === "/" || pathname.startsWith("/dashboard")) return null;
   if (pathname.startsWith("/assets")) return "ASSETS";
   if (pathname.startsWith("/work-orders")) return "WORK_ORDERS";
   if (pathname.startsWith("/users")) return "USERS";

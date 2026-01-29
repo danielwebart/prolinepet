@@ -1,12 +1,48 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../lib/prisma';
 import { Prisma } from '@prisma/client';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../../../../lib/auth';
+
+function normalizeDoc(doc: string): string {
+  return (doc || '').replace(/\D+/g, '');
+}
+
+async function shouldRestrictToLinkedClients(userId: number): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { salesRepAdmin: true } });
+  if (user?.salesRepAdmin) return true;
+  const hasLinks = Boolean(await prisma.userClientRep.findFirst({ where: { userId }, select: { id: true } }));
+  return hasLinks;
+}
+
+async function canAccessOrderByCustomerDoc(userId: number, customerDoc?: string | null): Promise<boolean> {
+  const doc = normalizeDoc(String(customerDoc || ''));
+  if (!doc) return false;
+  const link = await prisma.userClientRep.findFirst({
+    where: { userId, client: { is: { doc } } },
+    select: { id: true }
+  });
+  return Boolean(link);
+}
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
+  const session = await getServerSession(authOptions);
+  const userId = session?.user ? Number((session.user as any).id) : null;
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const id = Number(params.id);
+  const orderExists = await prisma.salesOrder.findUnique({ where: { id }, select: { id: true, customerDoc: true } });
+  if (!orderExists) return NextResponse.json({ error: 'Pedido não encontrado' }, { status: 404 });
+
+  if (await shouldRestrictToLinkedClients(userId)) {
+    const ok = await canAccessOrderByCustomerDoc(userId, orderExists.customerDoc);
+    if (!ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const order = await prisma.salesOrder.findUnique({
     where: { id },
     include: {
+      entity: true,
       items: {
         include: {
           inventoryItem: { include: { commercialFamily: true } }
@@ -23,7 +59,19 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   try {
+    const session = await getServerSession(authOptions);
+    const userId = session?.user ? Number((session.user as any).id) : null;
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const id = Number(params.id);
+    const orderExists = await prisma.salesOrder.findUnique({ where: { id }, select: { id: true, customerDoc: true } });
+    if (!orderExists) return NextResponse.json({ error: 'Pedido não encontrado' }, { status: 404 });
+
+    if (await shouldRestrictToLinkedClients(userId)) {
+      const ok = await canAccessOrderByCustomerDoc(userId, orderExists.customerDoc);
+      if (!ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = await request.json();
     const allowed: Record<string, any> = {};
     if (typeof body.status === 'string') {
@@ -78,11 +126,22 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
 export async function DELETE(_: Request, { params }: { params: { id: string } }) {
   try {
+    const session = await getServerSession(authOptions);
+    const userId = session?.user ? Number((session.user as any).id) : null;
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const id = Number(params.id);
+    const orderExists = await prisma.salesOrder.findUnique({ where: { id }, select: { id: true, customerDoc: true } });
+    if (!orderExists) return NextResponse.json({ error: 'Pedido não encontrado' }, { status: 404 });
+
+    if (await shouldRestrictToLinkedClients(userId)) {
+      const ok = await canAccessOrderByCustomerDoc(userId, orderExists.customerDoc);
+      if (!ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     await prisma.salesOrder.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
   }
 }
-
