@@ -90,6 +90,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     if (typeof body.customerDoc === 'string') {
       allowed.customerDoc = String(body.customerDoc);
     }
+    if (typeof body.totalInvoiced === 'number') {
+      allowed.totalInvoiced = Number(body.totalInvoiced);
+    }
 
     if (Object.keys(allowed).length === 0) {
       return NextResponse.json({ error: 'Nada para atualizar' }, { status: 400 });

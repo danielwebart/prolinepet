@@ -174,6 +174,36 @@ const AsyncSelect = ({
   );
 };
 
+const EditableIntegerInput = ({ value, onChange, className, disabled }: { value: number | undefined, onChange: (v: number | undefined) => void, className?: string, disabled?: boolean }) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value.replace(/\D/g, '');
+    onChange(v === '' ? undefined : parseInt(v, 10));
+  };
+  return <input type="text" className={className} value={value ?? ''} onChange={handleChange} disabled={disabled} />;
+};
+
+const EditableDecimalInput = ({ value, onChange, className, disabled }: { value: number | undefined, onChange: (v: number) => void, className?: string, disabled?: boolean }) => {
+  const [str, setStr] = useState(value !== undefined ? value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+  
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    const filtered = val.replace(/[^0-9,]/g, '');
+    const parts = filtered.split(',');
+    const clean = parts[0] + (parts.length > 1 ? ',' + parts.slice(1).join('') : '');
+    setStr(clean);
+    
+    const dotStr = clean.replace(',', '.');
+    const num = parseFloat(dotStr);
+    onChange(isNaN(num) ? 0 : num);
+  };
+
+  const handleBlur = () => {
+    setStr((value ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  };
+
+  return <input type="text" className={className} value={str} onChange={handleChange} onBlur={handleBlur} disabled={disabled} />;
+};
+
 function NewSalesOrderContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -213,12 +243,13 @@ function NewSalesOrderContent() {
     }
   }, [customerIdParam]);
   
-  // Editing logic (reused)
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [draft, setDraft] = useState<Partial<OrderItem>>({});
-  const [discountInput, setDiscountInput] = useState('');
-  const [showFeaturesFor, setShowFeaturesFor] = useState<number | null>(null);
+  const [currentDate, setCurrentDate] = useState('');
+  useEffect(() => {
+    setCurrentDate(new Date().toLocaleDateString('pt-BR'));
+  }, []);
   
+  const [showFeaturesFor, setShowFeaturesFor] = useState<number | null>(null);
+
   // Item search
   const [addingItems, setAddingItems] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -287,40 +318,13 @@ function NewSalesOrderContent() {
     }));
   };
 
-  const startEdit = (it: OrderItem) => {
-    setEditingId(it.id);
-    setDiscountInput(it.discountPct.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-    setDraft({
-      quantity: it.quantity,
-      unitPrice: it.unitPrice,
-      discountPct: it.discountPct,
-      width: it.width ?? undefined,
-      length: it.length ?? undefined,
-      grammage: it.grammage ?? undefined,
-      diameter: it.diameter ?? undefined,
-      tube: it.tube ?? undefined,
-      clientOrderNumber: it.clientOrderNumber ?? undefined,
-      clientOrderItemNumber: it.clientOrderItemNumber ?? undefined,
-      itemDeliveryDate: it.itemDeliveryDate ?? undefined,
-      internalResin: it.internalResin ?? false,
-      externalResin: it.externalResin ?? false,
-      creases: it.creases ?? {},
-    });
-  };
-  
-  const cancelEdit = () => { setEditingId(null); setDraft({}); };
-
-  const saveEdit = () => {
-    if (!editingId) return;
+  const updateItem = (id: number, changes: Partial<OrderItem>) => {
     setOrder(prev => ({
       ...prev,
       items: (prev.items || []).map(it => 
-        it.id === editingId ? { ...it, ...draft } : it
+        it.id === id ? { ...it, ...changes } : it
       )
     }));
-    setEditingId(null); 
-    setDraft({});
-    setShowFeaturesFor(null);
   };
 
   const saveOrder = async () => {
@@ -416,13 +420,13 @@ function NewSalesOrderContent() {
     }
   };
 
-  const computeWeightKg = (it: OrderItem, useDraft = false): number => {
+  const computeWeightKg = (it: OrderItem): number => {
     const hasDims = supportsSheetDims(it);
     if (hasDims) {
-      const w = (useDraft ? (draft.width ?? it.width) : it.width) ?? 0;
-      const l = (useDraft ? (draft.length ?? it.length) : it.length) ?? 0;
-      const g = (useDraft ? (draft.grammage ?? it.grammage) : it.grammage) ?? 0;
-      const q = (useDraft ? (draft.quantity ?? it.quantity) : it.quantity) ?? 0;
+      const w = it.width ?? 0;
+      const l = it.length ?? 0;
+      const g = it.grammage ?? 0;
+      const q = it.quantity ?? 0;
       if (w > 0 && l > 0 && g > 0 && q > 0) {
         const areaM2 = (l / 1000) * (w / 1000);
         const weightKg = (areaM2 * g * q) / 1000;
@@ -434,22 +438,15 @@ function NewSalesOrderContent() {
 
   const globalItems = order.items || [];
   const globalSubtotal = globalItems.reduce((s, it) => {
-    const isEd = editingId === it.id;
-    const qty = isEd ? (draft.quantity ?? it.quantity) : it.quantity;
-    const price = isEd ? (draft.unitPrice ?? it.unitPrice) : it.unitPrice;
-    return s + (qty * price);
+    return s + (it.quantity * it.unitPrice);
   }, 0);
 
   const globalDiscount = globalItems.reduce((s, it) => {
-    const isEd = editingId === it.id;
-    const qty = isEd ? (draft.quantity ?? it.quantity) : it.quantity;
-    const price = isEd ? (draft.unitPrice ?? it.unitPrice) : it.unitPrice;
-    const discount = isEd ? (draft.discountPct ?? it.discountPct) : it.discountPct;
-    return s + (qty * price * (discount / 100));
+    return s + (it.quantity * it.unitPrice * (it.discountPct / 100));
   }, 0);
 
   const globalTotalNoTax = globalSubtotal - globalDiscount;
-  const globalWeight = globalItems.reduce((s, it) => s + Math.round(computeWeightKg(it, editingId === it.id)), 0);
+  const globalWeight = globalItems.reduce((s, it) => s + Math.round(computeWeightKg(it)), 0);
 
   const groups = useMemo(() => {
     const out = new Map<string, OrderItem[]>();
@@ -494,7 +491,7 @@ function NewSalesOrderContent() {
               </div>
               <div>
                 <span className="text-gray-600">Data</span>
-                <div className="mt-1">{new Date().toLocaleDateString('pt-BR')}</div>
+                <div className="mt-1">{currentDate}</div>
               </div>
               <div>
                 <AsyncSelect
@@ -645,7 +642,6 @@ function NewSalesOrderContent() {
                 </thead>
                 <tbody>
                   {list.map((it) => {
-                    const isEditing = editingId === it.id;
                     const showWidthLengthGram = supportsSheetDims(it);
                     const showDiameterTube = supportsCoreDims(it);
                     const isFeatures = showFeaturesFor === it.id;
@@ -658,75 +654,33 @@ function NewSalesOrderContent() {
                           <td className="p-2">{it.unit || '-'}</td>
                           {list.some(supportsSheetDims) && (
                             <>
-                              <td className="p-2">{showWidthLengthGram ? (isEditing ? (<input type="number" step="1" className="w-24 px-2 py-1 border rounded" value={draft.width ?? it.width ?? ''} onChange={(e) => setDraft((d) => ({ ...d, width: parseInt(e.target.value || '0', 10) }))} />) : (fmtInt(it.width ?? undefined))) : '-'}</td>
-                              <td className="p-2">{showWidthLengthGram ? (isEditing ? (<input type="number" step="1" className="w-24 px-2 py-1 border rounded" value={draft.length ?? it.length ?? ''} onChange={(e) => setDraft((d) => ({ ...d, length: parseInt(e.target.value || '0', 10) }))} />) : (fmtInt(it.length ?? undefined))) : '-'}</td>
-                              <td className="p-2">{showWidthLengthGram ? (isEditing ? (<input type="number" step="1" className="w-24 px-2 py-1 border rounded" value={draft.grammage ?? it.grammage ?? ''} onChange={(e) => setDraft((d) => ({ ...d, grammage: parseInt(e.target.value || '0', 10) }))} />) : (fmtInt(it.grammage ?? undefined))) : '-'}</td>
+                              <td className="p-2">{showWidthLengthGram ? (<EditableIntegerInput className="w-24 px-2 py-1 border rounded" value={it.width ?? undefined} onChange={(v) => updateItem(it.id, { width: v })} />) : '-'}</td>
+                              <td className="p-2">{showWidthLengthGram ? (<EditableIntegerInput className="w-24 px-2 py-1 border rounded" value={it.length ?? undefined} onChange={(v) => updateItem(it.id, { length: v })} />) : '-'}</td>
+                              <td className="p-2">{showWidthLengthGram ? (<EditableIntegerInput className="w-24 px-2 py-1 border rounded" value={it.grammage ?? undefined} onChange={(v) => updateItem(it.id, { grammage: v })} />) : '-'}</td>
                             </>
                           )}
                           {list.some(supportsCoreDims) && (
                             <>
-                              <td className="p-2">{showDiameterTube ? (isEditing ? (<input type="number" step="1" className="w-24 px-2 py-1 border rounded" value={draft.diameter ?? it.diameter ?? ''} onChange={(e) => setDraft((d) => ({ ...d, diameter: parseInt(e.target.value || '0', 10) }))} />) : (fmtInt(it.diameter ?? undefined))) : '-'}</td>
-                              <td className="p-2">{showDiameterTube ? (isEditing ? (<input type="number" step="1" className="w-24 px-2 py-1 border rounded" value={draft.tube ?? it.tube ?? ''} onChange={(e) => setDraft((d) => ({ ...d, tube: parseInt(e.target.value || '0', 10) }))} />) : (fmtInt(it.tube ?? undefined))) : '-'}</td>
+                              <td className="p-2">{showDiameterTube ? (<EditableIntegerInput className="w-24 px-2 py-1 border rounded" value={it.diameter ?? undefined} onChange={(v) => updateItem(it.id, { diameter: v })} />) : '-'}</td>
+                              <td className="p-2">{showDiameterTube ? (<EditableIntegerInput className="w-24 px-2 py-1 border rounded" value={it.tube ?? undefined} onChange={(v) => updateItem(it.id, { tube: v })} />) : '-'}</td>
                             </>
                           )}
-                          <td className="p-2">{isEditing ? (<input type="text" className="w-20 px-2 py-1 border rounded" value={draft.quantity ?? ''} onChange={(e) => { const v = e.target.value.replace(/\D/g, ''); setDraft(d => ({ ...d, quantity: v === '' ? undefined : parseInt(v, 10) })) }} />) : fmtInt(it.quantity)}</td>
-                          <td className="p-2">{fmtInt(computeWeightKg(it, isEditing))}</td>
+                          <td className="p-2"><EditableIntegerInput className="w-20 px-2 py-1 border rounded" value={it.quantity} onChange={(v) => updateItem(it.id, { quantity: v ?? 0 })} /></td>
+                          <td className="p-2">{fmtInt(computeWeightKg(it))}</td>
                           <td className="p-2">
-                             {isEditing ? (
-                               <input 
-                                 type="text" 
-                                 className="w-24 px-2 py-1 border rounded bg-gray-100 text-gray-600 cursor-not-allowed" 
-                                 value={(draft.unitPrice ?? it.unitPrice ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 
-                                 disabled 
-                               />
-                             ) : (
-                               it.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-                             )}
+                             {fmtCurrency(it.unitPrice)}
                           </td>
                           <td className="p-2">
-                             {isEditing ? (
-                               <input 
-                                 type="text" 
-                                 className="w-20 px-2 py-1 border rounded" 
-                                 value={discountInput} 
-                                 onChange={(e) => {
-                                    const val = e.target.value;
-                                    const filtered = val.replace(/[^0-9,]/g, '');
-                                    const parts = filtered.split(',');
-                                    const clean = parts[0] + (parts.length > 1 ? ',' + parts.slice(1).join('') : '');
-                                    setDiscountInput(clean);
-                                    const num = parseFloat(clean.replace(',', '.'));
-                                    setDraft(d => ({ ...d, discountPct: isNaN(num) ? 0 : num }));
-                                 }} 
-                               />
-                             ) : (
-                               `${it.discountPct.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
-                             )}
+                             <EditableDecimalInput className="w-20 px-2 py-1 border rounded" value={it.discountPct} onChange={(v) => updateItem(it.id, { discountPct: v })} />
                           </td>
                           <td className="p-2">
                             <div className="flex items-center justify-center gap-2">
                               <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" title="Características do item" aria-label="Características" onClick={() => setShowFeaturesFor(showFeaturesFor === it.id ? null : it.id)}>
                                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 0 0 1-2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"></path></svg>
                               </button>
-                              {!isEditing ? (
-                                <>
-                                  <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" title="Editar" aria-label="Editar" onClick={() => startEdit(it)}>
-                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
-                                  </button>
-                                  <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" title="Excluir" aria-label="Excluir" onClick={() => removeItem(it.id)}>
-                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                                  </button>
-                                </>
-                              ) : (
-                                <>
-                                  <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-green-600" title="Salvar" aria-label="Salvar" onClick={saveEdit}>
-                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17Z"/></svg>
-                                  </button>
-                                  <button className="inline-flex items-center justify-center w-8 h-8 bg-red-50 border border-red-200 rounded shadow-sm hover:bg-red-100 text-red-600" title="Cancelar" aria-label="Cancelar" onClick={cancelEdit}>
-                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.41 4.29 19.71 2.88 18.3 9.17 12 2.88 5.71 4.29 4.29 10.59 10.59 16.89 4.29l1.41 1.42Z"/></svg>
-                                  </button>
-                                </>
-                              )}
+                              <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" title="Excluir" aria-label="Excluir" onClick={() => removeItem(it.id)}>
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -746,14 +700,12 @@ function NewSalesOrderContent() {
                                             type="number" 
                                             className="w-16 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
                                             placeholder="0" 
-                                            disabled={!isEditing} 
-                                            value={isEditing ? (draft.creases?.[n] ?? '') : (it.creases?.[n] ?? '')}
+                                            value={it.creases?.[n] ?? ''}
                                             onChange={(e) => {
                                               const val = e.target.value ? parseInt(e.target.value, 10) : undefined;
-                                              setDraft(d => ({
-                                                ...d,
-                                                creases: { ...(d.creases || {}), [n]: val === undefined ? 0 : val }
-                                              }));
+                                              updateItem(it.id, {
+                                                creases: { ...(it.creases || {}), [n]: val === undefined ? 0 : val }
+                                              });
                                             }}
                                           />
                                         </div>
@@ -765,9 +717,8 @@ function NewSalesOrderContent() {
                                     <input 
                                       type="text" 
                                       className="w-48 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
-                                      disabled={!isEditing}
-                                      value={isEditing ? (draft.clientOrderNumber ?? '') : (it.clientOrderNumber ?? '')}
-                                      onChange={(e) => setDraft(d => ({ ...d, clientOrderNumber: e.target.value }))}
+                                      value={it.clientOrderNumber ?? ''}
+                                      onChange={(e) => updateItem(it.id, { clientOrderNumber: e.target.value })}
                                     />
                                   </div>
                                   <div className="space-y-1">
@@ -775,9 +726,8 @@ function NewSalesOrderContent() {
                                     <input 
                                       type="number" 
                                       className="w-24 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
-                                      disabled={!isEditing}
-                                      value={isEditing ? (draft.clientOrderItemNumber ?? '') : (it.clientOrderItemNumber ?? '')}
-                                      onChange={(e) => setDraft(d => ({ ...d, clientOrderItemNumber: e.target.value ? Number(e.target.value) : null }))}
+                                      value={it.clientOrderItemNumber ?? ''}
+                                      onChange={(e) => updateItem(it.id, { clientOrderItemNumber: e.target.value ? Number(e.target.value) : null })}
                                     />
                                   </div>
                                   <div className="space-y-1">
@@ -785,9 +735,8 @@ function NewSalesOrderContent() {
                                     <input 
                                       type="date" 
                                       className="w-32 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
-                                      disabled={!isEditing}
-                                      value={isEditing ? (draft.itemDeliveryDate ? new Date(draft.itemDeliveryDate).toISOString().split('T')[0] : '') : (it.itemDeliveryDate ? new Date(it.itemDeliveryDate).toISOString().split('T')[0] : '')}
-                                      onChange={(e) => setDraft(d => ({ ...d, itemDeliveryDate: e.target.value ? new Date(e.target.value) : null }))}
+                                      value={it.itemDeliveryDate ? new Date(it.itemDeliveryDate).toISOString().split('T')[0] : ''}
+                                      onChange={(e) => updateItem(it.id, { itemDeliveryDate: e.target.value ? new Date(e.target.value) : null })}
                                     />
                                   </div>
                                   <div className="flex items-center gap-2 pb-2">
@@ -795,22 +744,20 @@ function NewSalesOrderContent() {
                                       type="checkbox" 
                                       id={`res-in-${it.id}`} 
                                       className="rounded border-gray-300 disabled:bg-gray-100" 
-                                      disabled={!isEditing}
-                                      checked={isEditing ? (draft.internalResin ?? false) : (it.internalResin ?? false)}
-                                      onChange={(e) => setDraft(d => ({ ...d, internalResin: e.target.checked }))}
+                                      checked={it.internalResin ?? false}
+                                      onChange={(e) => updateItem(it.id, { internalResin: e.target.checked })}
                                     />
-                                    <label htmlFor={`res-in-${it.id}`} className={`text-sm ${!isEditing ? 'text-gray-500' : 'text-gray-700'}`}>Resina interna</label>
+                                    <label htmlFor={`res-in-${it.id}`} className="text-sm text-gray-700">Resina interna</label>
                                   </div>
                                   <div className="flex items-center gap-2 pb-2">
                                     <input 
                                       type="checkbox" 
                                       id={`res-out-${it.id}`} 
                                       className="rounded border-gray-300 disabled:bg-gray-100" 
-                                      disabled={!isEditing}
-                                      checked={isEditing ? (draft.externalResin ?? false) : (it.externalResin ?? false)}
-                                      onChange={(e) => setDraft(d => ({ ...d, externalResin: e.target.checked }))}
+                                      checked={it.externalResin ?? false}
+                                      onChange={(e) => updateItem(it.id, { externalResin: e.target.checked })}
                                     />
-                                    <label htmlFor={`res-out-${it.id}`} className={`text-sm ${!isEditing ? 'text-gray-500' : 'text-gray-700'}`}>Resina externa</label>
+                                    <label htmlFor={`res-out-${it.id}`} className="text-sm text-gray-700">Resina externa</label>
                                   </div>
                                 </div>
                               </div>
@@ -825,22 +772,20 @@ function NewSalesOrderContent() {
             </div>
             {(() => {
               const subtotal = list.reduce((s, it) => {
-                const isEd = editingId === it.id;
-                const qty = isEd ? (draft.quantity ?? it.quantity) : it.quantity;
-                const price = isEd ? (draft.unitPrice ?? it.unitPrice) : it.unitPrice;
+                const qty = it.quantity;
+                const price = it.unitPrice;
                 return s + (qty * price);
               }, 0);
               
               const discountTotal = list.reduce((s, it) => {
-                const isEd = editingId === it.id;
-                const qty = isEd ? (draft.quantity ?? it.quantity) : it.quantity;
-                const price = isEd ? (draft.unitPrice ?? it.unitPrice) : it.unitPrice;
-                const discount = isEd ? (draft.discountPct ?? it.discountPct) : it.discountPct;
+                const qty = it.quantity;
+                const price = it.unitPrice;
+                const discount = it.discountPct;
                 return s + (qty * price * (discount / 100));
               }, 0);
               
               const total = subtotal - discountTotal;
-              const totalWeight = list.reduce((s, it) => s + Math.round(computeWeightKg(it, editingId === it.id)), 0);
+              const totalWeight = list.reduce((s, it) => s + Math.round(computeWeightKg(it)), 0);
               return (
                 <div className="px-3 py-2 text-xs text-gray-700 flex gap-6 justify-end border-t">
                   <span>Subtotal: {fmtCurrency(subtotal)}</span>
@@ -857,10 +802,34 @@ function NewSalesOrderContent() {
   );
 }
 
+class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: any}> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-4 bg-red-50 border border-red-200 rounded text-red-700">
+          <h2 className="font-bold mb-2">Erro no componente:</h2>
+          <pre className="text-xs overflow-auto">{this.state.error?.toString()}</pre>
+          <pre className="text-xs overflow-auto mt-2">{this.state.error?.stack}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function NewSalesOrderPage() {
   return (
     <Suspense fallback={<div>Carregando...</div>}>
-      <NewSalesOrderContent />
+      <ErrorBoundary>
+        <NewSalesOrderContent />
+      </ErrorBoundary>
     </Suspense>
   );
 }

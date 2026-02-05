@@ -50,6 +50,7 @@ type SalesOrder = {
   entity?: { name: string; cnpj: string } | null;
   lastTaxSimulation?: string | null;
   totalWithTax?: number;
+  totalInvoiced?: number;
 };
 
 const ICON_BTN = "inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700";
@@ -581,7 +582,7 @@ export default function SalesOrderMaintenancePage() {
                 </div>
 
                 {/* Totais */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-2">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-2">
                   <div>
                     <span className="text-gray-600">Total Sem Imp R$</span>
                     <div className="mt-1 w-full px-2 py-1 border rounded bg-gray-50 text-gray-800">{fmtCurrency(globalTotalNoTax)}</div>
@@ -593,6 +594,10 @@ export default function SalesOrderMaintenancePage() {
                   <div>
                     <span className="text-gray-600">Total Peso (KG)</span>
                     <div className="mt-1 w-full px-2 py-1 border rounded bg-gray-50 text-gray-800">{fmtInt(globalWeight)}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Total Fat. R$</span>
+                    <div className="mt-1 w-full px-2 py-1 border rounded bg-blue-50 text-gray-800 font-medium" title="Atualizado via ERP">{fmtCurrency(order.totalInvoiced ?? 0)}</div>
                   </div>
                 </div>
               </div>
@@ -975,6 +980,7 @@ export default function SalesOrderMaintenancePage() {
                     <span>Descontos: {fmtCurrency(discountTotal)}</span>
                     <span>Total Sem Imp R$: {fmtCurrency(total)}</span>
                     <span>Total Peso (KG): {fmtInt(totalWeight)}</span>
+                    <span className="font-bold text-blue-700 bg-blue-50 px-2 rounded">Total Fat. R$: {fmtCurrency(order.totalInvoiced)}</span>
                   </div>
                 );
               })()}

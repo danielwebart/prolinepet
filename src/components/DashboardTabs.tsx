@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import SalesDashboard from "./SalesDashboard";
 
 type Module = {
   id: number;
@@ -58,6 +59,10 @@ export default function DashboardTabs({ modules, maintenanceContent }: Dashboard
         {activeTab === 'MAINT' ? (
           <div className="animate-in fade-in duration-300">
             {maintenanceContent}
+          </div>
+        ) : (activeTab === 'SALES' || activeTab === 'VENDAS') ? (
+          <div className="animate-in fade-in duration-300">
+            <SalesDashboard />
           </div>
         ) : (
           <div className="p-8 text-center text-gray-500 bg-gray-50 rounded border border-dashed border-gray-200">

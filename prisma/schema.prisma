@@ -246,6 +246,7 @@ model SalesOrder {
   client          Client?          @relation(fields: [clientId], references: [id])
   lastTaxSimulation DateTime?
   totalWithTax    Float            @default(0)
+  totalInvoiced   Float            @default(0)
 }
 
 model SalesOrderStatusHistory {
