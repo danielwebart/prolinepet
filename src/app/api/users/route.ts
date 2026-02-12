@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+// Rebuild trigger: Fix webpack runtime error
 import { prisma } from '../../../lib/prisma';
 import bcrypt from 'bcrypt';
 
@@ -32,7 +33,7 @@ export async function GET(request: Request) {
   await ensureUserDocColumn();
   const whereSql = onlyReps ? `WHERE ("salesRepAdmin"=TRUE OR "salesRepAdmin"=1)` : '';
   const rows: any[] = await prisma.$queryRawUnsafe(
-    `SELECT id, name, email, doc, "salesRepAdmin", "erpIntegrationMode", "createdAt", "updatedAt" FROM "User" ${whereSql} ORDER BY name ASC`
+    `SELECT id, name, email, doc, "salesRepAdmin", "twoFactorRequired", "erpIntegrationMode", "createdAt", "updatedAt", ("twoFactorSecret" IS NOT NULL) as "hasTwoFactorSecret" FROM "User" ${whereSql} ORDER BY name ASC`
   );
   return NextResponse.json(rows);
 }

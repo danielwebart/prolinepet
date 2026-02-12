@@ -52,6 +52,9 @@ export async function POST(request: Request) {
         unitPrice: price,
         discountPct: disc,
         lineTotal,
+        width: it.inventoryItem.width,
+        length: it.inventoryItem.length,
+        grammage: it.inventoryItem.grammage,
       };
     });
 

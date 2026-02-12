@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+// Rebuild trigger: Fix webpack runtime error
 import { prisma } from '../../../../../../lib/prisma';
 
 function normalizeDoc(doc: string): string {

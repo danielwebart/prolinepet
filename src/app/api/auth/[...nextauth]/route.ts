@@ -1,4 +1,5 @@
 import NextAuth from 'next-auth';
+// Rebuild trigger: Fix webpack runtime error
 import { authOptions } from '../../../../lib/auth';
 
 const handler = NextAuth(authOptions);

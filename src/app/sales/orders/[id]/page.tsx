@@ -1,6 +1,7 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { SalesOrderItemRow, supportsSheetDims, supportsCoreDims } from "../components/SalesOrderItemRow";
 
 type InventoryItem = {
   id: number;
@@ -9,6 +10,9 @@ type InventoryItem = {
   unit?: string | null;
   commercialFamily?: { id: number; name: string } | null;
   unitPrice?: number | null;
+  width?: number | null;
+  length?: number | null;
+  grammage?: number | null;
 };
 
 type OrderItem = {
@@ -56,13 +60,15 @@ type SalesOrder = {
 const ICON_BTN = "inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700";
 
 const isDeletableStatus = (status?: string) => {
-  const s = (status || '').toUpperCase();
-  return s === 'OPEN' || s.includes('ERRO') || s.includes('ERROR');
+  const s = (status || '').trim().toUpperCase();
+  return s === 'OPEN' || s === 'ORÇAMENTO' || s === 'ORCAMENTO' || s.includes('ERRO') || s.includes('ERROR');
 };
 
 const isEditableStatus = isDeletableStatus;
 
 const minChars = 1;
+
+// SalesOrderItemRow component replaced by import
 
 const AsyncSelect = ({ 
   label, 
@@ -163,23 +169,8 @@ function familyName(it: OrderItem): string {
   return fam.toUpperCase();
 }
 
-function supportsSheetDims(it: OrderItem): boolean {
-  const fam = (it.inventoryItem?.commercialFamily?.name || '').toUpperCase();
-  const name = (it.name || '').toUpperCase();
-  // Detectar por família OU pelo nome do item
-  if (fam.includes('CHAPA') || fam.includes('CHAPAS')) return true;
-  if (name.includes('CHAPA') || name.includes('CHAPAS')) return true;
-  // Se já existir alguma medida, também habilita
-  return (it.width != null) || (it.length != null) || (it.grammage != null);
-}
+// Helpers moved to shared component
 
-function supportsCoreDims(it: OrderItem): boolean {
-  const fam = (it.inventoryItem?.commercialFamily?.name || '').toUpperCase();
-  const name = (it.name || '').toUpperCase();
-  if (fam.includes('MIOL')) return true;
-  if (name.includes('MIOL')) return true;
-  return (it.diameter != null) || (it.tube != null);
-}
 
 function statusChipStyle(s?: string): string {
   const v = (s || '').trim();
@@ -238,9 +229,6 @@ export default function SalesOrderMaintenancePage() {
   const [order, setOrder] = useState<SalesOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [draft, setDraft] = useState<Partial<OrderItem>>({});
-  const [discountInput, setDiscountInput] = useState('');
   const [showFeaturesFor, setShowFeaturesFor] = useState<number | null>(null);
   const [hdrDraft, setHdrDraft] = useState<{ paymentTerms?: string; deliveryDate?: string; customerName?: string; customerDoc?: string }>({});
   const [isHeaderEditing, setIsHeaderEditing] = useState(false);
@@ -252,6 +240,8 @@ export default function SalesOrderMaintenancePage() {
   const [simulatedTotal, setSimulatedTotal] = useState<number | null>(null);
   const [simulating, setSimulating] = useState(false);
   const [integrating, setIntegrating] = useState(false);
+  const [checkingEdit, setCheckingEdit] = useState(false);
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
 
   const handleSimulateTaxes = async () => {
     if (!order) return;
@@ -335,7 +325,10 @@ export default function SalesOrderMaintenancePage() {
         unit: item.unit,
         quantity: 1,
         unitPrice: item.unitPrice ?? 0,
-        discountPct: 0
+        discountPct: 0,
+        width: item.width,
+        length: item.length,
+        grammage: item.grammage
       };
       
       const res = await fetch('/api/sales/orders/items', {
@@ -361,6 +354,7 @@ export default function SalesOrderMaintenancePage() {
         const res = await fetch(`/api/sales/orders/${id}`, { cache: 'no-store' });
         const data: SalesOrder = await res.json();
         setOrder(data);
+        setOrderItems(data.items || []);
         setHdrDraft({
           paymentTerms: data.paymentTerms || '',
           deliveryDate: data.deliveryDate ? new Date(data.deliveryDate).toISOString().slice(0,10) : '',
@@ -378,14 +372,14 @@ export default function SalesOrderMaintenancePage() {
   const fmtNumber = (n: number | undefined) => (n ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmtInt = (n: number | undefined) => Math.round(n ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 
-  const computeWeightKg = (it: OrderItem, useDraft = false): number => {
+  const computeWeightKg = (it: OrderItem): number => {
     // Aplicar fórmula para itens que têm medidas de chapa
     const hasDims = supportsSheetDims(it);
     if (hasDims) {
-      const w = (useDraft ? (draft.width ?? it.width) : it.width) ?? 0; // mm
-      const l = (useDraft ? (draft.length ?? it.length) : it.length) ?? 0; // mm
-      const g = (useDraft ? (draft.grammage ?? it.grammage) : it.grammage) ?? 0; // g/m2
-      const q = (useDraft ? (draft.quantity ?? it.quantity) : it.quantity) ?? 0;
+      const w = it.width ?? 0; // mm
+      const l = it.length ?? 0; // mm
+      const g = it.grammage ?? 0; // g/m2
+      const q = it.quantity ?? 0;
       if (w > 0 && l > 0 && g > 0 && q > 0) {
         const areaM2 = (l / 1000) * (w / 1000);
         const weightKg = (areaM2 * g * q) / 1000; // g → kg
@@ -416,61 +410,28 @@ export default function SalesOrderMaintenancePage() {
     const r = await fetch(`/api/sales/orders/${id}`, { cache: 'no-store' });
     const data = await r.json();
     setOrder(data);
+    setOrderItems(data.items || []);
   };
 
-  const globalItems = order?.items || [];
+  const globalItems = orderItems;
   const globalSubtotal = globalItems.reduce((s, it) => s + (it.quantity * it.unitPrice), 0);
   const globalDiscount = globalItems.reduce((s, it) => s + (it.quantity * it.unitPrice * (it.discountPct / 100)), 0);
   const globalTotalNoTax = globalSubtotal - globalDiscount;
-  const globalWeight = globalItems.reduce((s, it) => s + Math.round(computeWeightKg(it, false)), 0);
+  const globalWeight = globalItems.reduce((s, it) => s + Math.round(computeWeightKg(it)), 0);
 
   const groups = useMemo(() => {
     const out = new Map<string, OrderItem[]>();
-    for (const it of (order?.items || [])) {
+    for (const it of orderItems) {
       const key = familyName(it);
       const arr = out.get(key) || [];
       arr.push(it);
       out.set(key, arr);
     }
     return Array.from(out.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [order]);
+  }, [orderItems]);
 
-  const startEdit = (it: OrderItem) => {
-    setEditingId(it.id);
-    setDiscountInput(it.discountPct.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-    setDraft({
-      quantity: it.quantity,
-      discountPct: it.discountPct,
-      width: it.width ?? undefined,
-      length: it.length ?? undefined,
-      grammage: it.grammage ?? undefined,
-      diameter: it.diameter ?? undefined,
-      tube: it.tube ?? undefined,
-      creases: it.creases ?? {},
-      clientOrderNumber: it.clientOrderNumber ?? undefined,
-      clientOrderItemNumber: it.clientOrderItemNumber ?? undefined,
-      itemDeliveryDate: it.itemDeliveryDate ?? undefined,
-      internalResin: it.internalResin ?? false,
-      externalResin: it.externalResin ?? false,
-    });
-  };
-  const cancelEdit = () => { setEditingId(null); setDraft({}); };
+  // Removed startEdit, cancelEdit, saveEdit
 
-  const saveEdit = async () => {
-    if (!editingId) return;
-    try {
-      const res = await fetch(`/api/sales/orders/items/${editingId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft)
-      });
-      if (!res.ok) throw new Error('Falha ao salvar item');
-      const updated: any = await res.json();
-      setEditingId(null); setDraft({});
-      setShowFeaturesFor(null);
-      // Refresh
-      const r = await fetch(`/api/sales/orders/${id}`, { cache: 'no-store' });
-      setOrder(await r.json());
-    } catch (e: any) { alert(e?.message || String(e)); }
-  };
 
   return (
     <div className="p-6 space-y-4">
@@ -661,8 +622,84 @@ export default function SalesOrderMaintenancePage() {
                     </button>
                   </>
                 ) : (
-                  <button className={`${ICON_BTN} ${!isEditableStatus(order?.status) ? 'opacity-50 cursor-not-allowed' : ''}`} title="Editar" aria-label="Editar" disabled={!isEditableStatus(order?.status)} onClick={() => setIsHeaderEditing(true)}>
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                  <button 
+                    className={`${ICON_BTN} ${(!isEditableStatus(order?.status) && statusLabelPt(order?.status) !== 'Integrado') || checkingEdit ? 'opacity-50 cursor-not-allowed' : ''}`} 
+                    title="Editar" 
+                    aria-label="Editar" 
+                    disabled={(!isEditableStatus(order?.status) && statusLabelPt(order?.status) !== 'Integrado') || checkingEdit} 
+                    onClick={async () => {
+                        const status = statusLabelPt(order?.status);
+                        if (status === 'Integrado') {
+                            setCheckingEdit(true);
+                            try {
+                                const res = await fetch(`/api/sales/orders/${order!.id}/integrate`, {
+                                    method: 'POST', 
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ resource: 'checkPedidoExiste' })
+                                });
+                                if (!res.ok) {
+                                    const err = await res.json();
+                                    throw new Error(err.error || 'Falha na verificação');
+                                }
+                                const data = await res.json();
+                                
+                                let errorSubType = null;
+                                let errorDescription = null;
+                                
+                                const findError = (obj: any) => {
+                                    if (obj && typeof obj === 'object') {
+                                        if (obj.ErrorSubType) return { type: obj.ErrorSubType, desc: obj.ErrorDescription };
+                                    }
+                                    return null;
+                                };
+                                
+                                if (Array.isArray(data)) {
+                                    for (const item of data) {
+                                        const found = findError(item);
+                                        if (found) { errorSubType = found.type; errorDescription = found.desc; break; }
+                                    }
+                                } else {
+                                    const found = findError(data);
+                                    if (found) { 
+                                        errorSubType = found.type; errorDescription = found.desc; 
+                                    } else if (data.RowErrors && Array.isArray(data.RowErrors)) {
+                                        for (const item of data.RowErrors) {
+                                            const f = findError(item);
+                                            if (f) { errorSubType = f.type; errorDescription = f.desc; break; }
+                                        }
+                                    }
+                                }
+                                
+                                if (errorSubType === 'INFORMATION') {
+                                    const patchRes = await fetch(`/api/sales/orders/${order!.id}`, {
+                                        method: 'PATCH',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ status: 'Orçamento' })
+                                    });
+                                    if (!patchRes.ok) throw new Error('Falha ao reverter status para Orçamento');
+                                    await refreshOrder();
+                                    setIsHeaderEditing(true);
+                                } else {
+                                    alert(errorDescription || 'Erro: Não foi possível verificar a edição do pedido (ErrorSubType inválido ou ausente).');
+                                }
+                            } catch (e: any) {
+                                alert(e.message || String(e));
+                            } finally {
+                                setCheckingEdit(false);
+                            }
+                        } else {
+                            setIsHeaderEditing(true);
+                        }
+                    }}
+                  >
+                    {checkingEdit ? (
+                        <svg className="animate-spin h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    ) : (
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                    )}
                   </button>
                 )}
               </div>
@@ -760,220 +797,53 @@ export default function SalesOrderMaintenancePage() {
                   </thead>
                   <tbody>
                     {list.map((it) => {
-                      const isEditing = editingId === it.id;
                       const hasSheet = list.some(supportsSheetDims);
                       const hasCore = list.some(supportsCoreDims);
-                      const showWidthLengthGram = hasSheet && supportsSheetDims(it);
-                      const showDiameterTube = hasCore && supportsCoreDims(it);
                       const isFeatures = showFeaturesFor === it.id;
 
                       return (
-                        <React.Fragment key={it.id}>
-                          <tr className="border-t">
-                          <td className="p-2">{it.name}</td>
-                          <td className="p-2">{it.sku || '-'}</td>
-                          <td className="p-2">{it.unit || '-'}</td>
-                          {list.some(supportsSheetDims) && (
-                            <>
-                              <td className="p-2">{showWidthLengthGram ? (isEditing ? (<input type="number" step="1" className="w-24 px-2 py-1 border rounded" value={draft.width ?? it.width ?? ''} onChange={(e) => setDraft((d) => ({ ...d, width: parseInt(e.target.value || '0', 10) }))} />) : (fmtInt(it.width ?? undefined))) : '-'}</td>
-                              <td className="p-2">{showWidthLengthGram ? (isEditing ? (<input type="number" step="1" className="w-24 px-2 py-1 border rounded" value={draft.length ?? it.length ?? ''} onChange={(e) => setDraft((d) => ({ ...d, length: parseInt(e.target.value || '0', 10) }))} />) : (fmtInt(it.length ?? undefined))) : '-'}</td>
-                              <td className="p-2">{showWidthLengthGram ? (isEditing ? (<input type="number" step="1" className="w-24 px-2 py-1 border rounded" value={draft.grammage ?? it.grammage ?? ''} onChange={(e) => setDraft((d) => ({ ...d, grammage: parseInt(e.target.value || '0', 10) }))} />) : (fmtInt(it.grammage ?? undefined))) : '-'}</td>
-                            </>
-                          )}
-                          {list.some(supportsCoreDims) && (
-                            <>
-                              <td className="p-2">{showDiameterTube ? (isEditing ? (<input type="number" step="1" className="w-24 px-2 py-1 border rounded" value={draft.diameter ?? it.diameter ?? ''} onChange={(e) => setDraft((d) => ({ ...d, diameter: parseInt(e.target.value || '0', 10) }))} />) : (fmtInt(it.diameter ?? undefined))) : '-'}</td>
-                              <td className="p-2">{showDiameterTube ? (isEditing ? (<input type="number" step="1" className="w-24 px-2 py-1 border rounded" value={draft.tube ?? it.tube ?? ''} onChange={(e) => setDraft((d) => ({ ...d, tube: parseInt(e.target.value || '0', 10) }))} />) : (fmtInt(it.tube ?? undefined))) : '-'}</td>
-                            </>
-                          )}
-                          <td className="p-2">{isEditing ? (<input type="text" className="w-20 px-2 py-1 border rounded" value={draft.quantity ?? ''} onChange={(e) => { const v = e.target.value.replace(/\D/g, ''); setDraft(d => ({ ...d, quantity: v === '' ? undefined : parseInt(v, 10) })) }} />) : fmtInt(it.quantity)}</td>
-                          <td className="p-2">{fmtInt(computeWeightKg(it, isEditing))}</td>
-                          <td className="p-2">
-                            {isEditing ? (
-                              <input 
-                                type="text" 
-                                className="w-24 px-2 py-1 border rounded bg-gray-100 text-gray-600 cursor-not-allowed" 
-                                value={(draft.unitPrice ?? it.unitPrice ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 
-                                disabled 
-                              />
-                            ) : (
-                              it.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-                            )}
-                          </td>
-                          <td className="p-2">
-                             {isEditing ? (
-                               <input 
-                                 type="text" 
-                                 className="w-20 px-2 py-1 border rounded" 
-                                 value={discountInput} 
-                                 onChange={(e) => {
-                                    const val = e.target.value;
-                                    const filtered = val.replace(/[^0-9,]/g, '');
-                                    const parts = filtered.split(',');
-                                    const clean = parts[0] + (parts.length > 1 ? ',' + parts.slice(1).join('') : '');
-                                    setDiscountInput(clean);
-                                    const num = parseFloat(clean.replace(',', '.'));
-                                    setDraft(d => ({ ...d, discountPct: isNaN(num) ? 0 : num }));
-                                 }} 
-                               />
-                             ) : (
-                               `${it.discountPct.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`
-                             )}
-                          </td>
-                          <td className="p-2">
-                            <div className="flex items-center justify-center gap-2">
-                              {/* Botão de Características sempre visível */}
-                              <button 
-                                className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" 
-                                title="Características/Detalhes" 
-                                aria-label="Características" 
-                                onClick={() => setShowFeaturesFor(showFeaturesFor === it.id ? null : it.id)}
-                              >
-                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 0 0 1-2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"></path></svg>
-                              </button>
-
-                              {/* Ações de edição/exclusão ou salvar/cancelar */}
-                              <div className="flex items-center gap-2">
-                                {!isEditing ? (
-                                  <>
-                                    <button className={`inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700 ${!isEditableStatus(order?.status) ? 'opacity-50 cursor-not-allowed' : ''}`} title="Editar" aria-label="Editar" disabled={!isEditableStatus(order?.status)} onClick={() => startEdit(it)}>
-                                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
-                                    </button>
-                                    <button className={`inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700 ${!isEditableStatus(order?.status) ? 'opacity-50 cursor-not-allowed' : ''}`} title="Excluir" aria-label="Excluir" disabled={!isEditableStatus(order?.status)} onClick={async () => {
-                                      if (!confirm('Confirma excluir este item?')) return;
-                                      try {
-                                        const res = await fetch(`/api/sales/orders/items/${it.id}`, { method: 'DELETE' });
-                                        if (!res.ok) {
-                                          const errData = await res.json().catch(() => ({}));
-                                          throw new Error(errData.error || 'Falha ao excluir item');
-                                        }
-                                        await refreshOrder();
-                                      } catch (e: any) { alert(e?.message || String(e)); }
-                                    }}>
-                                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                                    </button>
-                                  </>
-                                ) : (
-                                  <>
-                                    <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-green-600" title="Salvar" aria-label="Salvar" onClick={saveEdit}>
-                                      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17Z"/></svg>
-                                    </button>
-                                    <button className="inline-flex items-center justify-center w-8 h-8 bg-red-50 border border-red-200 rounded shadow-sm hover:bg-red-100 text-red-600" title="Cancelar" aria-label="Cancelar" onClick={cancelEdit}>
-                                      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.41 4.29 19.71 2.88 18.3 9.17 12 2.88 5.71 4.29 4.29 10.59 10.59 16.89 4.29l1.41 1.42Z"/></svg>
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                        {isFeatures && (
-                          <tr className="bg-gray-50 border-t-0 border-b">
-                            <td colSpan={20} className="p-4">
-                              <div className="space-y-4">
-                                <h4 className="font-semibold text-sm">Características</h4>
-                                <div className="flex flex-wrap items-end gap-6">
-                                  <div className="space-y-1">
-                                    <label className="text-xs text-gray-600 block">Vincos</label>
-                                    <div className="grid grid-cols-4 gap-2">
-                                      {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-                                        <div key={n} className="flex items-center gap-1">
-                                          <span className="text-xs text-gray-500 w-3">{n}</span>
-                                          <input 
-                                            type="number" 
-                                            className="w-16 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
-                                            placeholder="0" 
-                                            disabled={!isEditing}
-                                            value={isEditing ? (draft.creases?.[n] ?? '') : (it.creases?.[n] ?? '')}
-                                            onChange={(e) => {
-                                              const val = e.target.value ? parseInt(e.target.value, 10) : undefined;
-                                              setDraft(d => ({
-                                                ...d,
-                                                creases: { ...(d.creases || {}), [n]: val === undefined ? 0 : val }
-                                              }));
-                                            }}
-                                          />
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <label className="text-xs text-gray-600 block">Pedido Cliente</label>
-                                    <input 
-                                      type="text" 
-                                      className="w-48 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
-                                      disabled={!isEditing}
-                                      value={isEditing ? (draft.clientOrderNumber ?? '') : (it.clientOrderNumber ?? '')}
-                                      onChange={(e) => setDraft(d => ({ ...d, clientOrderNumber: e.target.value }))}
-                                    />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <label className="text-xs text-gray-600 block">Item Pedido</label>
-                                    <input 
-                                      type="number" 
-                                      className="w-24 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
-                                      disabled={!isEditing}
-                                      value={isEditing ? (draft.clientOrderItemNumber ?? '') : (it.clientOrderItemNumber ?? '')}
-                                      onChange={(e) => setDraft(d => ({ ...d, clientOrderItemNumber: e.target.value ? Number(e.target.value) : null }))}
-                                    />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <label className="text-xs text-gray-600 block">Data Entrega</label>
-                                    <input 
-                                      type="date" 
-                                      className="w-32 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
-                                      disabled={!isEditing}
-                                      value={isEditing ? (draft.itemDeliveryDate ? new Date(draft.itemDeliveryDate).toISOString().split('T')[0] : '') : (it.itemDeliveryDate ? new Date(it.itemDeliveryDate).toISOString().split('T')[0] : '')}
-                                      onChange={(e) => setDraft(d => ({ ...d, itemDeliveryDate: e.target.value ? new Date(e.target.value) : null }))}
-                                    />
-                                  </div>
-                                  <div className="flex items-center gap-2 pb-2">
-                                    <input 
-                                      type="checkbox" 
-                                      id={`res-in-${it.id}`} 
-                                      className="rounded border-gray-300 disabled:bg-gray-100" 
-                                      disabled={!isEditing}
-                                      checked={isEditing ? (draft.internalResin ?? false) : (it.internalResin ?? false)}
-                                      onChange={(e) => setDraft(d => ({ ...d, internalResin: e.target.checked }))}
-                                    />
-                                    <label htmlFor={`res-in-${it.id}`} className={`text-sm ${!isEditing ? 'text-gray-500' : 'text-gray-700'}`}>Resina interna</label>
-                                  </div>
-                                  <div className="flex items-center gap-2 pb-2">
-                                    <input 
-                                      type="checkbox" 
-                                      id={`res-out-${it.id}`} 
-                                      className="rounded border-gray-300 disabled:bg-gray-100" 
-                                      disabled={!isEditing}
-                                      checked={isEditing ? (draft.externalResin ?? false) : (it.externalResin ?? false)}
-                                      onChange={(e) => setDraft(d => ({ ...d, externalResin: e.target.checked }))}
-                                    />
-                                    <label htmlFor={`res-out-${it.id}`} className={`text-sm ${!isEditing ? 'text-gray-500' : 'text-gray-700'}`}>Resina externa</label>
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
+                        <SalesOrderItemRow
+                           key={it.id}
+                           item={it}
+                           isOrderEditable={isHeaderEditing}
+                           onPreviewUpdate={(updated) => {
+                             setOrderItems(prev => prev.map(i => i.id === updated.id ? updated : i));
+                           }}
+                           onAutoSave={async (updated) => {
+                              const res = await fetch(`/api/sales/orders/items/${updated.id}`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(updated)
+                              });
+                              if (!res.ok) throw new Error('Falha ao salvar item');
+                           }}
+                           onSaveSuccess={refreshOrder}
+                           onDelete={async () => {
+                               if (!confirm('Confirma excluir este item?')) return;
+                               try {
+                                 const res = await fetch(`/api/sales/orders/items/${it.id}`, { method: 'DELETE' });
+                                 if (!res.ok) throw new Error('Falha ao excluir item');
+                                 await refreshOrder();
+                               } catch (e: any) { alert(e?.message || String(e)); }
+                           }}
+                           showFeatures={isFeatures}
+                           toggleFeatures={() => setShowFeaturesFor(isFeatures ? null : it.id)}
+                           computeWeightKg={computeWeightKg}
+                           fmtInt={fmtInt}
+                           // Extra props for column visibility
+                           hasSheetCol={hasSheet}
+                           hasCoreCol={hasCore}
+                        />
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
               {(() => {
-                const subtotal = list.reduce((s, it) => {
-                  const isEd = editingId === it.id;
-                  const qty = isEd ? (draft.quantity ?? it.quantity) : it.quantity;
-                  return s + (qty * it.unitPrice);
-                }, 0);
-                const discountTotal = list.reduce((s, it) => {
-                  const isEd = editingId === it.id;
-                  const qty = isEd ? (draft.quantity ?? it.quantity) : it.quantity;
-                  const discount = isEd ? (draft.discountPct ?? it.discountPct) : it.discountPct;
-                  return s + (qty * it.unitPrice * (discount / 100));
-                }, 0);
+                const subtotal = list.reduce((s, it) => s + (it.quantity * it.unitPrice), 0);
+                const discountTotal = list.reduce((s, it) => s + (it.quantity * it.unitPrice * (it.discountPct / 100)), 0);
                 const total = subtotal - discountTotal;
-                const totalWeight = list.reduce((s, it) => s + Math.round(computeWeightKg(it, editingId === it.id)), 0);
+                const totalWeight = list.reduce((s, it) => s + Math.round(computeWeightKg(it)), 0);
                 return (
                   <div className="px-3 py-2 text-xs text-gray-700 flex gap-6 justify-end border-t">
                     <span>Subtotal: {fmtCurrency(subtotal)}</span>

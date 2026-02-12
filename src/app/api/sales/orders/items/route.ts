@@ -23,6 +23,15 @@ export async function POST(request: Request) {
     if (body.diameter !== undefined) payload.diameter = Number(body.diameter || 0);
     if (body.tube !== undefined) payload.tube = Number(body.tube || 0);
 
+    if (payload.inventoryItemId) {
+      const invItem = await prisma.inventoryItem.findUnique({ where: { id: payload.inventoryItemId } });
+      if (invItem) {
+        if (payload.width === undefined) payload.width = invItem.width;
+        if (payload.length === undefined) payload.length = invItem.length;
+        if (payload.grammage === undefined) payload.grammage = invItem.grammage;
+      }
+    }
+
     const created = await prisma.salesOrderItem.create({
       data: {
         orderId,

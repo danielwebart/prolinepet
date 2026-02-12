@@ -1,4 +1,5 @@
 "use client";
+// Rebuild trigger: Fix webpack runtime error
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
@@ -28,8 +29,95 @@ type SalesOrder = {
   total: number; 
   items?: OrderItem[];
 };
-type LinkedItem = { id: number; name: string; sku?: string | null; unit?: string | null; unitPrice?: number };
+type LinkedItem = { id: number; name: string; sku?: string | null; unit?: string | null; unitPrice?: number; width?: number; length?: number; grammage?: number };
 type CartItem = { id: number; inventoryItemId: number; name: string; sku?: string | null; unit?: string | null; quantity: number; unitPrice: number };
+
+const statusColor = (s: string) => {
+  const v = (s || '').trim();
+  switch (v) {
+    case 'Orçamento': return 'bg-gray-100 text-gray-800';
+    case 'Aguardando Integração': return 'bg-yellow-100 text-yellow-800';
+    case 'Erro na integração': return 'bg-red-100 text-red-800';
+    case 'Integrado': return 'bg-blue-100 text-blue-800';
+    case 'Em fila produção': return 'bg-amber-100 text-amber-800';
+    case 'Em produção': return 'bg-indigo-100 text-indigo-800';
+    case 'Produzido/Estocado': return 'bg-cyan-100 text-cyan-800';
+    case 'Faturado': return 'bg-green-100 text-green-800';
+    case 'Cancelado': return 'bg-red-100 text-red-800';
+    default: return 'bg-gray-100 text-gray-800';
+  }
+};
+
+const statusLabelPt = (s?: string) => {
+  const v = (s || '').trim().toUpperCase();
+  switch (v) {
+    case 'OPEN': return 'Orçamento';
+    case 'AGUARDANDO INTEGRAÇÃO':
+    case 'AGUARDANDO INTEGRACAO':
+    case 'AWAITING INTEGRATION': return 'Aguardando Integração';
+    case 'INTEGRADO':
+    case 'INTEGRATED': return 'Integrado';
+    case 'ERRO NA INTEGRAÇÃO':
+    case 'ERRO NA INTEGRACAO':
+    case 'INTEGRATION ERROR': return 'Erro na integração';
+    case 'EM FILA PRODUÇÃO':
+    case 'EM FILA PRODUCAO': return 'Em fila produção';
+    case 'EM PRODUÇÃO':
+    case 'EM PRODUCAO': return 'Em produção';
+    case 'PRODUZIDO/ESTOCADO': return 'Produzido/Estocado';
+    case 'FATURADO': return 'Faturado';
+    case 'CANCELADO': return 'Cancelado';
+    default: return s || '-';
+  }
+};
+
+const isEditableStatus = (status?: string) => {
+  const s = (status || '').trim().toUpperCase();
+  return s === 'OPEN' || s === 'ORÇAMENTO' || s === 'ORCAMENTO' || s.includes('ERRO') || s.includes('ERROR');
+};
+
+const IconBtn = ({ title, onClick, children, disabled = false }: any) => (
+  <button
+    title={title}
+    onClick={disabled ? undefined : onClick}
+    className={`inline-flex items-center justify-center w-7 h-7 rounded border mr-1 ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
+    disabled={disabled}
+  >
+    {children}
+  </button>
+);
+
+const EyeIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" strokeWidth="1.5" />
+    <circle cx="12" cy="12" r="3" strokeWidth="1.5" />
+  </svg>
+);
+const FileIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" strokeWidth="1.5" />
+    <path d="M14 2v6h6" strokeWidth="1.5" />
+  </svg>
+);
+const SendIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+    <path d="M22 2 11 13" strokeWidth="1.5" />
+    <path d="M22 2 15 22l-4-9-9-4Z" strokeWidth="1.5" />
+  </svg>
+);
+const ReturnIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+    <path d="M9 7 4 12l5 5" strokeWidth="1.5" />
+    <path d="M4 12h10a5 5 0 0 1 0 10h-3" strokeWidth="1.5" />
+  </svg>
+);
+const TrashIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
+    <path d="M3 6h18" strokeWidth="1.5" />
+    <path d="M8 6V4h8v2" strokeWidth="1.5" />
+    <path d="M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14" strokeWidth="1.5" />
+  </svg>
+);
 
 export default function ClientDetailsPage() {
   const params = useParams() as any;
@@ -44,88 +132,7 @@ export default function ClientDetailsPage() {
   const [showCart, setShowCart] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [selected, setSelected] = useState<SalesOrder | null>(null);
-
-  const statusColor = (s: string) => {
-    const v = (s || '').trim();
-    switch (v) {
-      case 'Orçamento': return 'bg-gray-100 text-gray-800';
-      case 'Aguardando Integração': return 'bg-yellow-100 text-yellow-800';
-      case 'Erro na integração': return 'bg-red-100 text-red-800';
-      case 'Integrado': return 'bg-blue-100 text-blue-800';
-      case 'Em fila produção': return 'bg-amber-100 text-amber-800';
-      case 'Em produção': return 'bg-indigo-100 text-indigo-800';
-      case 'Produzido/Estocado': return 'bg-cyan-100 text-cyan-800';
-      case 'Faturado': return 'bg-green-100 text-green-800';
-      case 'Cancelado': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const statusLabelPt = (s?: string) => {
-    const v = (s || '').trim().toUpperCase();
-    switch (v) {
-      case 'OPEN': return 'Orçamento';
-      case 'AGUARDANDO INTEGRAÇÃO':
-      case 'AGUARDANDO INTEGRACAO':
-      case 'AWAITING INTEGRATION': return 'Aguardando Integração';
-      case 'INTEGRADO':
-      case 'INTEGRATED': return 'Integrado';
-      case 'ERRO NA INTEGRAÇÃO':
-      case 'ERRO NA INTEGRACAO':
-      case 'INTEGRATION ERROR': return 'Erro na integração';
-      case 'EM FILA PRODUÇÃO':
-      case 'EM FILA PRODUCAO': return 'Em fila produção';
-      case 'EM PRODUÇÃO':
-      case 'EM PRODUCAO': return 'Em produção';
-      case 'PRODUZIDO/ESTOCADO': return 'Produzido/Estocado';
-      case 'FATURADO': return 'Faturado';
-      case 'CANCELADO': return 'Cancelado';
-      default: return s || '-';
-    }
-  };
-
-  const IconBtn = ({ title, onClick, children, disabled = false }: any) => (
-    <button
-      title={title}
-      onClick={disabled ? undefined : onClick}
-      className={`inline-flex items-center justify-center w-7 h-7 rounded border mr-1 ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
-      disabled={disabled}
-    >
-      {children}
-    </button>
-  );
-
-  const EyeIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
-      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" strokeWidth="1.5" />
-      <circle cx="12" cy="12" r="3" strokeWidth="1.5" />
-    </svg>
-  );
-  const FileIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" strokeWidth="1.5" />
-      <path d="M14 2v6h6" strokeWidth="1.5" />
-    </svg>
-  );
-  const SendIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
-      <path d="M22 2 11 13" strokeWidth="1.5" />
-      <path d="M22 2 15 22l-4-9-9-4Z" strokeWidth="1.5" />
-    </svg>
-  );
-  const ReturnIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
-      <path d="M9 7 4 12l5 5" strokeWidth="1.5" />
-      <path d="M4 12h10a5 5 0 0 1 0 10h-3" strokeWidth="1.5" />
-    </svg>
-  );
-  const TrashIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
-      <path d="M3 6h18" strokeWidth="1.5" />
-      <path d="M8 6V4h8v2" strokeWidth="1.5" />
-      <path d="M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14" strokeWidth="1.5" />
-    </svg>
-  );
+  const [integratingId, setIntegratingId] = useState<number | null>(null);
 
   const refreshCart = async () => {
     if (!client) return;
@@ -304,12 +311,12 @@ export default function ClientDetailsPage() {
           <div className="flex justify-between items-center p-3 bg-gray-50 border-b">
             <span className="text-sm font-semibold text-gray-700">Carrinho do cliente</span>
             {cartItems.length > 0 && (
-                <button 
-                    onClick={generateOrder}
-                    className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-colors"
-                >
-                    Gerar Pedido
-                </button>
+              <button 
+                  onClick={generateOrder}
+                  className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-colors"
+              >
+                  Gerar Pedido
+              </button>
             )}
           </div>
           <table className="w-full text-sm">
@@ -389,37 +396,66 @@ export default function ClientDetailsPage() {
                     <div className="inline-flex">
                       <IconBtn title="Visualizar" onClick={() => setSelected(o)}><EyeIcon /></IconBtn>
                       <IconBtn title="Detalhes" onClick={() => { window.location.href = `/sales/orders/${o.id}`; }}> <FileIcon /> </IconBtn>
-                      {o.status === 'Aguardando Integração' ? (
-                        <IconBtn title="Retornar para Orçamento" onClick={async () => {
+                      <IconBtn 
+                        title="Enviar para ERP" 
+                        disabled={integratingId === o.id || !['Orçamento', 'Erro na integração'].includes(statusLabelPt(o.status))}
+                        onClick={async () => {
+                          if (!confirm('Confirma enviar este pedido para o ERP?')) return;
+                          setIntegratingId(o.id);
                           try {
-                            const r = await fetch(`/api/sales/orders/${o.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Orçamento' }) });
-                            if (!r.ok) throw new Error('Falha ao atualizar status');
-                            const updated = await r.json();
-                            setOrders((prev) => prev.map((so) => so.id === o.id ? { ...so, status: updated.status } : so));
-                          } catch (e: any) { alert(e?.message || String(e)); }
-                        }}>
-                          <ReturnIcon />
-                        </IconBtn>
-                      ) : (
-                        <IconBtn title="Enviar para o ERP" onClick={async () => {
-                          try {
-                            const r = await fetch(`/api/sales/orders/${o.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Aguardando Integração' }) });
-                            if (!r.ok) throw new Error('Falha ao atualizar status');
-                            const updated = await r.json();
-                            setOrders((prev) => prev.map((so) => so.id === o.id ? { ...so, status: updated.status } : so));
-                          } catch (e: any) { alert(e?.message || String(e)); }
-                        }}> <SendIcon /> </IconBtn>
-                      )}
-                      <IconBtn title="Excluir" disabled={o.status !== 'Orçamento'} onClick={async () => {
-                        if (!confirm('Confirma excluir este pedido?')) return;
-                        try {
-                          const r = await fetch(`/api/sales/orders/${o.id}`, { method: 'DELETE' });
-                          if (!r.ok) throw new Error('Falha ao excluir pedido');
-                          setOrders((prev) => prev.filter((so) => so.id !== o.id));
-                        } catch (e: any) { alert(e?.message || String(e)); }
-                      }}>
-                        <TrashIcon />
+                            const res = await fetch(`/api/sales/orders/${o.id}/integrate`, {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' }
+                            });
+                            if (!res.ok) {
+                                const err = await res.json();
+                                throw new Error(err.error || 'Falha ao enviar para ERP');
+                            }
+                            const data = await res.json();
+                            
+                            if (data.newStatus === 'Erro na integração') {
+                                alert('Houve erros na integração. Verifique o histórico de situação.');
+                            } else if (data.newStatus === 'Integrado') {
+                                alert('Pedido integrado com sucesso!');
+                            } else {
+                                alert('Envio realizado. Verifique o status atual.');
+                            }
+
+                            // Reload orders
+                            const c = client;
+                            if (c?.doc) {
+                                const ro = await fetch(`/api/sales/orders?doc=${encodeURIComponent(c.doc)}`, { cache: 'no-store' });
+                                if (ro.ok) {
+                                    const list: SalesOrder[] = await ro.json();
+                                    setOrders(Array.isArray(list) ? list : []);
+                                }
+                            }
+                          } catch (e: any) { 
+                              alert(e?.message || String(e)); 
+                          } finally {
+                              setIntegratingId(null);
+                          }
+                        }}
+                      > 
+                        {integratingId === o.id ? (
+                            <svg className="animate-spin h-3 w-3 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        ) : <SendIcon />}
                       </IconBtn>
+                      <IconBtn 
+                        title="Excluir" 
+                        disabled={!isEditableStatus(o.status)}
+                        onClick={async () => {
+                            if (!confirm('Confirma excluir este pedido?')) return;
+                            const r = await fetch(`/api/sales/orders/${o.id}`, { method: 'DELETE' });
+                            if (r.ok) {
+                                setOrders(orders.filter(x => x.id !== o.id));
+                            } else {
+                                alert('Erro ao excluir pedido');
+                            }
+                        }}
+                      > <TrashIcon /> </IconBtn>
                     </div>
                   </td>
                 </tr>
@@ -445,6 +481,9 @@ export default function ClientDetailsPage() {
             <tr className="bg-gray-50">
               <th className="p-2 text-left">Item</th>
               <th className="p-2 text-left">SKU</th>
+              <th className="p-2 text-left">Larg.</th>
+              <th className="p-2 text-left">Compr.</th>
+              <th className="p-2 text-left">Gram.</th>
               <th className="p-2 text-left">Un.</th>
               <th className="p-2 text-left">Preço Unit R$</th>
               <th className="p-2 text-left">Ações</th>
@@ -455,6 +494,9 @@ export default function ClientDetailsPage() {
               <tr key={i} className="border-t">
                 <td className="p-2">{it.name}</td>
                 <td className="p-2">{it.sku || '-'}</td>
+                <td className="p-2">{it.width || '-'}</td>
+                <td className="p-2">{it.length || '-'}</td>
+                <td className="p-2">{it.grammage || '-'}</td>
                 <td className="p-2">{it.unit || '-'}</td>
                 <td className="p-2">{(it.unitPrice ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                 <td className="p-2">
@@ -465,10 +507,10 @@ export default function ClientDetailsPage() {
               </tr>
             ))}
             {linkedItems.length === 0 && (
-              <tr><td className="p-3 text-gray-500" colSpan={5}>Sem itens</td></tr>
+              <tr><td className="p-3 text-gray-500" colSpan={8}>Sem itens</td></tr>
             )}
             {!expandItems && linkedItems.length > 0 && (
-              <tr><td className="p-2 text-center text-xs text-gray-500 italic" colSpan={5}>{linkedItems.length} itens ocultos...</td></tr>
+              <tr><td className="p-2 text-center text-xs text-gray-500 italic" colSpan={8}>{linkedItems.length} itens ocultos...</td></tr>
             )}
           </tbody>
         </table>

@@ -26,6 +26,9 @@ export async function PATCH(request: Request, { params }: { params: { sku: strin
     if (body.name !== undefined) data.name = String(body.name || '').trim();
     if (body.sku !== undefined) data.sku = String(body.sku || '').trim();
     if (body.unit !== undefined) data.unit = String(body.unit || '').trim();
+    if (body.width !== undefined) data.width = Number(body.width);
+    if (body.length !== undefined) data.length = Number(body.length);
+    if (body.grammage !== undefined) data.grammage = Number(body.grammage);
     if (body.commercialFamilyId !== undefined) {
       const cfid = Number(body.commercialFamilyId);
       if (Number.isFinite(cfid) && cfid > 0) {

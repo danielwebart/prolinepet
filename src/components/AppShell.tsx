@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import Sidebar from "./Sidebar";
 import ProgramGuard from "./ProgramGuard";
@@ -13,14 +13,26 @@ type Permissions = { activeEntityId: number | null; entities: Entity[]; modules:
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const role = (session?.user as any)?.role as string | undefined;
   const isLogin = pathname === "/login";
+  
+  useEffect(() => {
+    if (status === "unauthenticated" && !isLogin) {
+       window.location.href = "/login";
+    }
+  }, [status, isLogin]);
+
   if (isLogin) {
     return <main className="min-h-screen">{children}</main>;
   }
+  
+  // Se estiver carregando por muito tempo, permitir renderizar para não travar
+  // O useEffect acima irá redirecionar se for unauthenticated
+  
   const [perms, setPerms] = useState<Permissions | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [autoSelected, setAutoSelected] = useState(false);
   const [cartCount, setCartCount] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -28,8 +40,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const loadPerms = async () => {
     setLoading(true);
+    setError(null);
     try {
       const r = await fetch('/api/permissions', { cache: 'no-store' });
+      if (!r.ok) throw new Error(`Status: ${r.status}`);
       const j = await r.json();
       setPerms(j);
       // Fallback: tentar selecionar a primeira entidade apenas UMA vez para evitar loop
@@ -37,13 +51,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         setAutoSelected(true);
         await onChangeEntity(Number(j.entities[0].id));
       }
-    } catch (err) {
-      // Em caso de erro, manter perms como está e sair do estado de loading
+    } catch (err: any) {
+      console.error("Failed to load permissions:", err);
+      setError(err.message || "Erro de conexão");
     } finally {
       setLoading(false);
     }
   };
-  useEffect(() => { loadPerms(); }, []);
+  
+  // Recarregar permissões quando a sessão estiver confirmada
+  useEffect(() => { 
+    if (status === 'authenticated') {
+        loadPerms(); 
+    }
+  }, [status]);
 
   useEffect(() => {
     const fetchCount = async () => {
@@ -55,13 +76,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             }
         } catch {}
     };
-    if (session?.user) {
+    if (status === 'authenticated') {
         fetchCount();
-        // Update count periodically
-        const interval = setInterval(fetchCount, 10000); 
+        // Update count periodically (30s)
+        const interval = setInterval(fetchCount, 30000); 
         return () => clearInterval(interval);
     }
-  }, [session]);
+  }, [status]);
 
   const onChangeEntity = async (id: number) => {
     try {
@@ -125,6 +146,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     </span>
                 )}
             </Link>
+
+            <button 
+                onClick={() => signOut({ callbackUrl: "/login" })}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-all shadow-sm ml-2"
+                title="Sair do sistema"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                    <polyline points="16 17 21 12 16 7"></polyline>
+                    <line x1="21" y1="12" x2="9" y2="12"></line>
+                </svg>
+                <span className="hidden sm:inline">Sair</span>
+            </button>
           </div>
         </div>
         <div className="p-6">

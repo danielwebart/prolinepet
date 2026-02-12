@@ -9,6 +9,9 @@ type InventoryItem = {
   unit?: string | null;
   commercialFamily?: { id: number; name: string } | null;
   unitPrice?: number | null;
+  width?: number | null;
+  length?: number | null;
+  grammage?: number | null;
 };
 
 type OrderItem = {
@@ -50,6 +53,8 @@ type SalesOrder = {
   items?: OrderItem[];
 };
 
+import { SalesOrderItemRow, supportsSheetDims, supportsCoreDims } from "../components/SalesOrderItemRow";
+
 const ICON_BTN = "inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700";
 
 function familyName(it: OrderItem): string {
@@ -63,21 +68,7 @@ function familyName(it: OrderItem): string {
   return fam.toUpperCase();
 }
 
-function supportsSheetDims(it: OrderItem): boolean {
-  const fam = (it.inventoryItem?.commercialFamily?.name || '').toUpperCase();
-  const name = (it.name || '').toUpperCase();
-  if (fam.includes('CHAPA') || fam.includes('CHAPAS')) return true;
-  if (name.includes('CHAPA') || name.includes('CHAPAS')) return true;
-  return (it.width != null) || (it.length != null) || (it.grammage != null);
-}
-
-function supportsCoreDims(it: OrderItem): boolean {
-  const fam = (it.inventoryItem?.commercialFamily?.name || '').toUpperCase();
-  const name = (it.name || '').toUpperCase();
-  if (fam.includes('MIOL')) return true;
-  if (name.includes('MIOL')) return true;
-  return (it.diameter != null) || (it.tube != null);
-}
+// Helpers imported from components/SalesOrderItemRow
 
 function statusChipStyle(s?: string): string {
   return 'bg-gray-100 text-gray-800 border border-gray-300';
@@ -263,16 +254,13 @@ function NewSalesOrderContent() {
       return;
     }
 
-    if (!order.customerId) {
-      setSearchResults([]);
-      return;
-    }
-    
     setSearchLoading(true);
     try {
       const params = new URLSearchParams();
       params.set('q', term);
-      params.set('clientId', String(order.customerId));
+      if (order.customerId) {
+        params.set('clientId', String(order.customerId));
+      }
       
       const res = await fetch(`/api/items?${params.toString()}`);
       if (res.ok) {
@@ -296,7 +284,10 @@ function NewSalesOrderContent() {
       quantity: 1,
       unitPrice: Number(invItem.unitPrice ?? 0),
       discountPct: 0,
-      inventoryItem: invItem
+      inventoryItem: invItem,
+      width: invItem.width,
+      length: invItem.length,
+      grammage: invItem.grammage
     };
     
     setOrder(prev => {
@@ -641,132 +632,21 @@ function NewSalesOrderContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {list.map((it) => {
-                    const showWidthLengthGram = supportsSheetDims(it);
-                    const showDiameterTube = supportsCoreDims(it);
-                    const isFeatures = showFeaturesFor === it.id;
-
-                    return (
-                      <React.Fragment key={it.id}>
-                        <tr className="border-t">
-                          <td className="p-2">{it.name}</td>
-                          <td className="p-2">{it.sku || '-'}</td>
-                          <td className="p-2">{it.unit || '-'}</td>
-                          {list.some(supportsSheetDims) && (
-                            <>
-                              <td className="p-2">{showWidthLengthGram ? (<EditableIntegerInput className="w-24 px-2 py-1 border rounded" value={it.width ?? undefined} onChange={(v) => updateItem(it.id, { width: v })} />) : '-'}</td>
-                              <td className="p-2">{showWidthLengthGram ? (<EditableIntegerInput className="w-24 px-2 py-1 border rounded" value={it.length ?? undefined} onChange={(v) => updateItem(it.id, { length: v })} />) : '-'}</td>
-                              <td className="p-2">{showWidthLengthGram ? (<EditableIntegerInput className="w-24 px-2 py-1 border rounded" value={it.grammage ?? undefined} onChange={(v) => updateItem(it.id, { grammage: v })} />) : '-'}</td>
-                            </>
-                          )}
-                          {list.some(supportsCoreDims) && (
-                            <>
-                              <td className="p-2">{showDiameterTube ? (<EditableIntegerInput className="w-24 px-2 py-1 border rounded" value={it.diameter ?? undefined} onChange={(v) => updateItem(it.id, { diameter: v })} />) : '-'}</td>
-                              <td className="p-2">{showDiameterTube ? (<EditableIntegerInput className="w-24 px-2 py-1 border rounded" value={it.tube ?? undefined} onChange={(v) => updateItem(it.id, { tube: v })} />) : '-'}</td>
-                            </>
-                          )}
-                          <td className="p-2"><EditableIntegerInput className="w-20 px-2 py-1 border rounded" value={it.quantity} onChange={(v) => updateItem(it.id, { quantity: v ?? 0 })} /></td>
-                          <td className="p-2">{fmtInt(computeWeightKg(it))}</td>
-                          <td className="p-2">
-                             {fmtCurrency(it.unitPrice)}
-                          </td>
-                          <td className="p-2">
-                             <EditableDecimalInput className="w-20 px-2 py-1 border rounded" value={it.discountPct} onChange={(v) => updateItem(it.id, { discountPct: v })} />
-                          </td>
-                          <td className="p-2">
-                            <div className="flex items-center justify-center gap-2">
-                              <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" title="Características do item" aria-label="Características" onClick={() => setShowFeaturesFor(showFeaturesFor === it.id ? null : it.id)}>
-                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 0 0 1-2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"></path></svg>
-                              </button>
-                              <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700" title="Excluir" aria-label="Excluir" onClick={() => removeItem(it.id)}>
-                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                        {isFeatures && (
-                          <tr className="bg-gray-50 border-t-0 border-b">
-                            <td colSpan={20} className="p-4">
-                              <div className="space-y-4">
-                                <h4 className="font-semibold text-sm mb-2">Características do Item</h4>
-                                <div className="flex flex-wrap items-end gap-6">
-                                  <div className="space-y-1">
-                                    <label className="text-xs text-gray-600 block">Vincos</label>
-                                    <div className="grid grid-cols-4 gap-2">
-                                      {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-                                        <div key={n} className="flex items-center gap-1">
-                                          <span className="text-xs text-gray-500 w-3">{n}</span>
-                                          <input 
-                                            type="number" 
-                                            className="w-16 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
-                                            placeholder="0" 
-                                            value={it.creases?.[n] ?? ''}
-                                            onChange={(e) => {
-                                              const val = e.target.value ? parseInt(e.target.value, 10) : undefined;
-                                              updateItem(it.id, {
-                                                creases: { ...(it.creases || {}), [n]: val === undefined ? 0 : val }
-                                              });
-                                            }}
-                                          />
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <label className="text-xs text-gray-600 block">Pedido Cliente</label>
-                                    <input 
-                                      type="text" 
-                                      className="w-48 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
-                                      value={it.clientOrderNumber ?? ''}
-                                      onChange={(e) => updateItem(it.id, { clientOrderNumber: e.target.value })}
-                                    />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <label className="text-xs text-gray-600 block">Item Pedido</label>
-                                    <input 
-                                      type="number" 
-                                      className="w-24 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
-                                      value={it.clientOrderItemNumber ?? ''}
-                                      onChange={(e) => updateItem(it.id, { clientOrderItemNumber: e.target.value ? Number(e.target.value) : null })}
-                                    />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <label className="text-xs text-gray-600 block">Data Entrega</label>
-                                    <input 
-                                      type="date" 
-                                      className="w-32 px-2 py-1 border rounded text-sm disabled:bg-gray-100 disabled:text-gray-500" 
-                                      value={it.itemDeliveryDate ? new Date(it.itemDeliveryDate).toISOString().split('T')[0] : ''}
-                                      onChange={(e) => updateItem(it.id, { itemDeliveryDate: e.target.value ? new Date(e.target.value) : null })}
-                                    />
-                                  </div>
-                                  <div className="flex items-center gap-2 pb-2">
-                                    <input 
-                                      type="checkbox" 
-                                      id={`res-in-${it.id}`} 
-                                      className="rounded border-gray-300 disabled:bg-gray-100" 
-                                      checked={it.internalResin ?? false}
-                                      onChange={(e) => updateItem(it.id, { internalResin: e.target.checked })}
-                                    />
-                                    <label htmlFor={`res-in-${it.id}`} className="text-sm text-gray-700">Resina interna</label>
-                                  </div>
-                                  <div className="flex items-center gap-2 pb-2">
-                                    <input 
-                                      type="checkbox" 
-                                      id={`res-out-${it.id}`} 
-                                      className="rounded border-gray-300 disabled:bg-gray-100" 
-                                      checked={it.externalResin ?? false}
-                                      onChange={(e) => updateItem(it.id, { externalResin: e.target.checked })}
-                                    />
-                                    <label htmlFor={`res-out-${it.id}`} className="text-sm text-gray-700">Resina externa</label>
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
+                  {list.map((it) => (
+                    <SalesOrderItemRow
+                      key={it.id}
+                      item={it}
+                      isOrderEditable={true}
+                      onPreviewUpdate={(updated) => updateItem(it.id, updated)}
+                      onDelete={() => removeItem(it.id)}
+                      showFeatures={showFeaturesFor === it.id}
+                      toggleFeatures={() => setShowFeaturesFor(showFeaturesFor === it.id ? null : it.id)}
+                      computeWeightKg={computeWeightKg}
+                      fmtInt={fmtInt}
+                      hasSheetCol={list.some(supportsSheetDims)}
+                      hasCoreCol={list.some(supportsCoreDims)}
+                    />
+                  ))}
                 </tbody>
               </table>
             </div>

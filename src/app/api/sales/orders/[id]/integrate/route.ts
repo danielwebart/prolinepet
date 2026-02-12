@@ -38,21 +38,60 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     // Extract Payment Terms Code (assuming format "[code] description")
     let paymentTermsErp = 30; // Default
+
+    if (!order.paymentTerms) {
+         return NextResponse.json({ error: 'Condição de Pagamento não informada. Por favor, selecione uma condição de pagamento.' }, { status: 400 });
+    }
+
     if (order.paymentTerms) {
         const match = order.paymentTerms.match(/^\[(\d+)\]/);
         if (match && match[1]) {
             paymentTermsErp = parseInt(match[1], 10);
+        } else {
+            // Fallback: try to find by exact description in PaymentTerm table
+            const term = await prisma.paymentTerm.findFirst({
+                where: { description: { equals: order.paymentTerms.trim(), mode: 'insensitive' } }
+            });
+            if (term?.code) {
+                paymentTermsErp = term.code;
+            }
         }
     }
 
     const customerDocRaw = order.client?.doc || order.customerDoc || '';
+
+    let entityDoc = (order.entity?.cnpj || '').replace(/\D/g, '');
+    if (!entityDoc && userId) {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { lastEntityId: true }
+        });
+        if (user?.lastEntityId) {
+             const entity = await prisma.entity.findUnique({ where: { id: user.lastEntityId } });
+             if (entity) entityDoc = (entity.cnpj || '').replace(/\D/g, '');
+        }
+    }
+
+    if (!customerDocRaw) return NextResponse.json({ error: 'CNPJ do cliente não encontrado.' }, { status: 400 });
+    if (!entityDoc) return NextResponse.json({ error: 'Representante (Entidade) não identificado no pedido.' }, { status: 400 });
+
+    // Parse optional resource from body
+    let resource = "inserePedido";
+    try {
+      const body = await request.json();
+      if (body && body.resource) {
+        resource = body.resource;
+      }
+    } catch (e) {
+      // Body might be empty, ignore
+    }
 
     // Construct Payload
     const payload = {
       route: integrationRoute,
       module: "mpd",
       version: "v1",
-      resource: "inserePedido",
+      resource: resource,
       method: "POST",
       params: {
         order: {
@@ -65,7 +104,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
           discountOrd: "0",
           deliveryDate: order.deliveryDate ? order.deliveryDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
           observ: order.notes || "Integração via Portal",
-          entityDoc: (order.entity?.cnpj || '').replace(/\D/g, '')
+          entityDoc: entityDoc
         },
         orderitem: order.items.map(item => ({
           orderId: order.id,
@@ -79,7 +118,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
           clientOrderNumber: item.clientOrderNumber || "",
           clientOrderItemNumber: item.clientOrderItemNumber || 0,
           deliveryDate: item.itemDeliveryDate ? item.itemDeliveryDate.toISOString().split('T')[0] : "",
-          externalResin: item.externalResin || false,
+          externalResin: item.externalResin ? "S" : "N",
           internalResin: item.internalResin ? "S" : "N"
         }))
       }
@@ -144,45 +183,47 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     // Update Order
     // Logic modified: If status changes, create new history. If status is same, update latest history.
-    if (newStatus !== order.status) {
-        await prisma.salesOrder.update({
-            where: { id: order.id },
-            data: {
-                status: newStatus,
-                statusHistory: {
-                    create: {
-                        status: newStatus,
-                        messages: messages
-                    }
-                }
-            }
-        });
-    } else {
-        // Status unchanged
-        const lastHistory = await prisma.salesOrderStatusHistory.findFirst({
-            where: { orderId: order.id },
-            orderBy: { changedAt: 'desc' }
-        });
-
-        if (lastHistory) {
-            // Update existing history record
-            await prisma.salesOrderStatusHistory.update({
-                where: { id: lastHistory.id },
-                data: {
-                    changedAt: new Date(),
-                    messages: messages
-                }
-            });
-        } else {
-            // No history exists (edge case), create one
-            await prisma.salesOrderStatusHistory.create({
-                data: {
-                    orderId: order.id,
-                    status: newStatus,
-                    messages: messages
-                }
-            });
-        }
+    if (resource !== 'checkPedidoExiste') {
+      if (newStatus !== order.status) {
+          await prisma.salesOrder.update({
+              where: { id: order.id },
+              data: {
+                  status: newStatus,
+                  statusHistory: {
+                      create: {
+                          status: newStatus,
+                          messages: messages
+                      }
+                  }
+              }
+          });
+      } else {
+          // Status unchanged
+          const lastHistory = await prisma.salesOrderStatusHistory.findFirst({
+              where: { orderId: order.id },
+              orderBy: { changedAt: 'desc' }
+          });
+  
+          if (lastHistory) {
+              // Update existing history record
+              await prisma.salesOrderStatusHistory.update({
+                  where: { id: lastHistory.id },
+                  data: {
+                      changedAt: new Date(),
+                      messages: messages
+                  }
+              });
+          } else {
+              // No history exists (edge case), create one
+              await prisma.salesOrderStatusHistory.create({
+                  data: {
+                      orderId: order.id,
+                      status: newStatus,
+                      messages: messages
+                  }
+              });
+          }
+      }
     }
 
     return NextResponse.json({ ...data, newStatus, messages });

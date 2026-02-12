@@ -2,6 +2,7 @@ import type { NextAuthOptions } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { prisma } from './prisma';
 import bcrypt from 'bcrypt';
+import { authenticator } from './otp';
 
 export const authOptions: NextAuthOptions = {
   session: { strategy: 'jwt' },
@@ -11,7 +12,8 @@ export const authOptions: NextAuthOptions = {
       name: 'Credenciais',
       credentials: {
         email: { label: 'E-mail', type: 'email' },
-        password: { label: 'Senha', type: 'password' }
+        password: { label: 'Senha', type: 'password' },
+        twoFactorCode: { label: '2FA Code', type: 'text' }
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
@@ -23,9 +25,26 @@ export const authOptions: NextAuthOptions = {
           user = await prisma.user.create({ data: { email: credentials.email, name: 'TI', password: hash } });
         }
         if (!user) return null;
-        if (!user) return null;
         const valid = await bcrypt.compare(credentials.password, user.password);
         if (!valid) return null;
+
+        // 2FA Verification
+        if (user.twoFactorRequired && user.twoFactorSecret) {
+          const code = credentials.twoFactorCode as string | undefined;
+          if (!code) {
+             throw new Error('2FA_REQUIRED');
+          }
+          try {
+            const isValid = await authenticator.verify({ token: code, secret: user.twoFactorSecret });
+            if (!isValid) {
+              throw new Error('Código 2FA inválido');
+            }
+          } catch (e) {
+            console.error('2FA Error:', e);
+            throw new Error('Erro ao validar 2FA');
+          }
+        }
+
         return { id: String(user.id), name: user.name, email: user.email } as any;
       }
     })
@@ -42,40 +61,46 @@ export const authOptions: NextAuthOptions = {
       (session.user as any).id = token.uid ?? (session.user as any).id ?? null;
       // Carregar entidade ativa (última usada) do usuário
       try {
-        const uid = token.uid ? String(token.uid) : (session.user as any)?.id;
-        if (uid) {
+        const uid = token.uid ? Number(token.uid) : Number((session.user as any)?.id);
+        if (uid && !isNaN(uid)) {
           // 1) Priorizar a última entidade selecionada pelo usuário (User.lastEntityId)
-          const lastRow: any[] = await prisma.$queryRawUnsafe(
-            `SELECT "lastEntityId" FROM "User" WHERE "id"=${Number(uid)} LIMIT 1`
-          );
-          let activeEntityId: number | null = lastRow[0]?.lastEntityId ?? null;
+          const userRecord = await prisma.user.findUnique({
+            where: { id: uid },
+            select: { lastEntityId: true }
+          });
+          let activeEntityId: number | null = userRecord?.lastEntityId ?? null;
+
           // Validar que o usuário possui vínculo com a entidade escolhida
           if (activeEntityId != null) {
-            const linkRow: any[] = await prisma.$queryRawUnsafe(
-              `SELECT "id" FROM "UserEntity" WHERE "userId"=${Number(uid)} AND "entityId"=${activeEntityId} LIMIT 1`
-            );
-            if (linkRow.length === 0) {
+            const linkRecord = await prisma.userEntity.findFirst({
+              where: { userId: uid, entityId: activeEntityId },
+              select: { id: true }
+            });
+            if (!linkRecord) {
               // se não houver vínculo, ignorar lastEntityId
               activeEntityId = null;
             }
           }
           // 2) Fallback: usar o vínculo mais recente do usuário
           if (activeEntityId == null) {
-            const ueRow: any[] = await prisma.$queryRawUnsafe(
-              `SELECT "entityId" FROM "UserEntity" WHERE "userId"=${Number(uid)} ORDER BY "id" DESC LIMIT 1`
-            );
-            activeEntityId = ueRow[0]?.entityId ?? null;
+            const ueRecord = await prisma.userEntity.findFirst({
+              where: { userId: uid },
+              orderBy: { id: 'desc' },
+              select: { entityId: true }
+            });
+            activeEntityId = ueRecord?.entityId ?? null;
           }
           // 3) Fallback final: entidade 1 se existir
           if (activeEntityId == null) {
-            const eRow: any[] = await prisma.$queryRawUnsafe(`SELECT id FROM "Entity" WHERE id=1 LIMIT 1`);
-            if (eRow.length > 0) activeEntityId = 1;
+             const eRecord = await prisma.entity.findUnique({ where: { id: 1 }, select: { id: true } });
+             if (eRecord) activeEntityId = 1;
           }
           (session as any).activeEntityId = activeEntityId;
         } else {
           (session as any).activeEntityId = null;
         }
-      } catch {
+      } catch (err) {
+        console.error("Session error:", err);
         (session as any).activeEntityId = null;
       }
       return session;

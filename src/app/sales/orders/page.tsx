@@ -23,6 +23,7 @@ export default function SalesOrdersPage() {
   const [dateStart, setDateStart] = useState<string>("");
   const [dateEnd, setDateEnd] = useState<string>("");
   const [selected, setSelected] = useState<SalesOrder | null>(null);
+  const [integratingId, setIntegratingId] = useState<number | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -226,30 +227,50 @@ export default function SalesOrdersPage() {
                     <div className="inline-flex">
                       <IconBtn title="Visualizar" onClick={() => setSelected(o)}><EyeIcon /></IconBtn>
                       <IconBtn title="Detalhes" onClick={() => { window.location.href = `/sales/orders/${o.id}`; }}> <FileIcon /> </IconBtn>
-                      {o.status === 'Aguardando Integração' ? (
-                        <IconBtn title="Retornar para Orçamento" onClick={async () => {
+                      <IconBtn 
+                        title="Enviar para ERP" 
+                        disabled={integratingId === o.id || !['Orçamento', 'Erro na integração'].includes(statusLabelPt(o.status))}
+                        onClick={async () => {
+                          if (!confirm('Confirma enviar este pedido para o ERP?')) return;
+                          setIntegratingId(o.id);
                           try {
-                            const r = await fetch(`/api/sales/orders/${o.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Orçamento' }) });
-                            if (!r.ok) throw new Error('Falha ao atualizar status');
-                            const updated = await r.json();
-                            setOrders((prev) => prev.map((so) => so.id === o.id ? { ...so, status: updated.status } : so));
-                          } catch (e: any) { alert(e?.message || String(e)); }
-                        }}>
-                          <ReturnIcon />
-                        </IconBtn>
-                      ) : (
-                        <IconBtn 
-                          title="Enviar para o ERP" 
-                          disabled={!['Orçamento', 'Erro na integração'].includes(statusLabelPt(o.status))}
-                          onClick={async () => {
-                          try {
-                            const r = await fetch(`/api/sales/orders/${o.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Aguardando Integração' }) });
-                            if (!r.ok) throw new Error('Falha ao atualizar status');
-                            const updated = await r.json();
-                            setOrders((prev) => prev.map((so) => so.id === o.id ? { ...so, status: updated.status } : so));
-                          } catch (e: any) { alert(e?.message || String(e)); }
-                        }}> <SendIcon /> </IconBtn>
-                      )}
+                            const res = await fetch(`/api/sales/orders/${o.id}/integrate`, {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' }
+                            });
+                            if (!res.ok) {
+                                const err = await res.json();
+                                throw new Error(err.error || 'Falha ao enviar para ERP');
+                            }
+                            const data = await res.json();
+                            
+                            if (data.newStatus === 'Erro na integração') {
+                                alert('Houve erros na integração. Verifique o histórico de situação.');
+                            } else if (data.newStatus === 'Integrado') {
+                                alert('Pedido integrado com sucesso!');
+                            } else {
+                                alert('Envio realizado. Verifique o status atual.');
+                            }
+
+                            // Reload
+                            const r = await fetch('/api/sales/orders');
+                            if (r.ok) {
+                                const list = await r.json();
+                                setOrders(Array.isArray(list) ? list : []);
+                            }
+                          } catch (e: any) { 
+                              alert(e?.message || String(e)); 
+                          } finally {
+                              setIntegratingId(null);
+                          }
+                        }}
+                      > 
+                        {integratingId === o.id ? (
+                            <svg className="animate-spin h-3 w-3 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        ) : <SendIcon />}
+                      </IconBtn>
                       <IconBtn title="Excluir" disabled={!['Orçamento', 'Erro na integração'].includes(statusLabelPt(o.status))} onClick={async () => {
                         if (!confirm('Confirma excluir este pedido?')) return;
                         try {

@@ -1,4 +1,5 @@
 "use client";
+// Rebuild trigger: Fix webpack runtime error
 import { useEffect, useMemo, useState } from "react";
 
 type EntityItem = { id: number; name: string; cnpj: string; linked: number | boolean };
@@ -148,6 +149,40 @@ export default function UsersPage() {
     } catch (e: any) { setErr(e?.message || String(e)); }
     finally { setLoading(false); }
   };
+
+  const toggleTwoFactorRequired = async (checked: boolean) => {
+    if (!selectedUserId) return;
+    setLoading(true); setErr(null);
+    try {
+      const res = await fetch(`/api/users/${selectedUserId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ twoFactorRequired: checked })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
+      // Atualizar lista mantendo seleção
+      await loadUsers();
+      setSelectedUserId(data.id);
+    } catch (e: any) { setErr(e?.message || String(e)); }
+    finally { setLoading(false); }
+  };
+
+  const resetTwoFactor = async () => {
+    if (!selectedUserId) return;
+    if (!window.confirm("Deseja realmente resetar o 2FA deste usuário? O usuário precisará configurar novamente no próximo login.")) return;
+    setLoading(true); setErr(null);
+    try {
+      const res = await fetch(`/api/users/${selectedUserId}/reset-2fa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
+      await loadUsers();
+    } catch (e: any) { setErr(e?.message || String(e)); }
+    finally { setLoading(false); }
+  };
+
+  const selectedUserIds = useMemo(() => selectedIds.length > 0 ? selectedIds : (selectedUserId ? [selectedUserId] : []), [selectedIds, selectedUserId]);
 
   const setErpMode = async (mode: string) => {
     if (!selectedUserId) return;
@@ -407,7 +442,7 @@ export default function UsersPage() {
         <div className="flex items-center justify-between mb-2">
           <h2 className="font-medium">Tag's</h2>
         </div>
-        <label className="text-xs flex items-center gap-1">
+        <label className="text-sm flex items-center gap-1">
           <input
             type="checkbox"
             disabled={!selectedUser}
@@ -416,6 +451,26 @@ export default function UsersPage() {
           />
           Representante/Adm Vendas
         </label>
+        <div className="flex items-center gap-2 mt-1">
+          <label className="text-base flex items-center gap-1">
+    <input
+      type="checkbox"
+      disabled={!selectedUser}
+      checked={Boolean(selectedUser?.twoFactorRequired)}
+      onChange={(ev) => toggleTwoFactorRequired(ev.target.checked)}
+    />
+    2FA Obrigatório
+  </label>
+          {selectedUser?.hasTwoFactorSecret && (
+            <button
+              onClick={resetTwoFactor}
+              className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded border border-red-200 hover:bg-red-200"
+              title="Resetar 2FA do usuário"
+            >
+              Resetar 2FA
+            </button>
+          )}
+        </div>
       </div>
       )}
 

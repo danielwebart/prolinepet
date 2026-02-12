@@ -42,14 +42,25 @@ export async function POST(request: Request) {
 
     // Extract Payment Terms Code
     let paymentTermsErp = 30; // Default
+    if (!paymentTerms) {
+        return NextResponse.json({ error: 'Condição de Pagamento não informada. Por favor, selecione uma condição de pagamento.' }, { status: 400 });
+    }
     if (paymentTerms) {
         const match = paymentTerms.match(/^\[(\d+)\]/);
         if (match && match[1]) {
             paymentTermsErp = parseInt(match[1], 10);
+        } else {
+             const term = await prisma.paymentTerm.findFirst({
+                 where: { description: { equals: paymentTerms.trim(), mode: 'insensitive' } }
+             });
+             if (term?.code) paymentTermsErp = term.code;
         }
     }
 
     const customerDocRaw = customerDoc || '';
+
+    if (!customerDocRaw) return NextResponse.json({ error: 'CNPJ do cliente não encontrado.' }, { status: 400 });
+    if (!entityDoc) return NextResponse.json({ error: 'Representante (Entidade) não identificado.' }, { status: 400 });
 
     // Construct Payload
     // Note: Since the order is not saved, we use 0 or dummy values for IDs
@@ -84,7 +95,7 @@ export async function POST(request: Request) {
           clientOrderNumber: item.clientOrderNumber || "",
           clientOrderItemNumber: item.clientOrderItemNumber || 0,
           deliveryDate: item.itemDeliveryDate ? new Date(item.itemDeliveryDate).toISOString().split('T')[0] : "",
-          externalResin: item.externalResin || false,
+          externalResin: item.externalResin ? "S" : "N",
           internalResin: item.internalResin ? "S" : "N"
         }))
       }

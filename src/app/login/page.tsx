@@ -1,7 +1,8 @@
 "use client";
-import { useRef, useState, Suspense } from "react";
+import { useRef, useState, Suspense, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
+import QRCode from 'qrcode';
 
 function LoginForm() {
   const searchParams = useSearchParams();
@@ -10,6 +11,15 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 2FA States
+  const [step, setStep] = useState<'credentials' | '2fa' | 'setup'>('credentials');
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [tempSecret, setTempSecret] = useState("");
+  const [otpauth, setOtpauth] = useState("");
+  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+
+  // Forgot Password States
   const [showForgot, setShowForgot] = useState(false);
   const [forgotStep, setForgotStep] = useState<1 | 2>(1);
   const [forgotEmail, setForgotEmail] = useState("");
@@ -19,23 +29,33 @@ function LoginForm() {
   const [forgotMsg, setForgotMsg] = useState<string | null>(null);
   const [forgotError, setForgotError] = useState<string | null>(null);
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
+  useEffect(() => {
+    if (step === 'setup' && otpauth) {
+      QRCode.toDataURL(otpauth)
+        .then((url) => setQrCodeUrl(url))
+        .catch((err) => console.error(err));
+    }
+  }, [step, otpauth]);
+
+  const performSignIn = async (creds: any) => {
     const res = await signIn("credentials", {
-      email,
-      password,
+      ...creds,
       redirect: false,
       callbackUrl,
     });
     setLoading(false);
     if (res?.error) {
-      setError("Credenciais inválidas");
+      if (res.error === '2FA_REQUIRED') {
+         setError("Autenticação de dois fatores necessária.");
+      } else if (res.error === 'Código 2FA inválido') {
+         setError("Código 2FA inválido.");
+      } else {
+         setError("Credenciais inválidas");
+      }
       return;
     }
     if (res?.ok) {
-      // Após login, garantir que a entidade ativa esteja definida com base nos vínculos do usuário
+      // Após login, garantir que a entidade ativa esteja definida
       try {
         const r = await fetch('/api/permissions', { cache: 'no-store' });
         const j = await r.json();
@@ -51,60 +71,191 @@ function LoginForm() {
     }
   };
 
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      if (step === 'credentials') {
+        const checkRes = await fetch('/api/auth/check-2fa', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        const checkData = await checkRes.json();
+        
+        if (!checkRes.ok) {
+            setLoading(false);
+            setError(checkData.error || 'Erro ao verificar credenciais');
+            return;
+        }
+
+        if (checkData.required) {
+            if (checkData.setup) {
+                setTempSecret(checkData.secret);
+                setOtpauth(checkData.otpauth);
+                setStep('setup');
+                setLoading(false);
+            } else {
+                setStep('2fa');
+                setLoading(false);
+            }
+        } else {
+            await performSignIn({ email, password });
+        }
+      } else if (step === '2fa') {
+        await performSignIn({ email, password, twoFactorCode });
+      } else if (step === 'setup') {
+        // Verify setup first
+        const verifyRes = await fetch('/api/auth/verify-2fa-setup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, secret: tempSecret, token: twoFactorCode })
+        });
+        const verifyData = await verifyRes.json();
+        if (!verifyRes.ok) {
+            setLoading(false);
+            setError(verifyData.error || 'Erro ao verificar código');
+            return;
+        }
+        // If verified, proceed to login
+        await performSignIn({ email, password, twoFactorCode });
+      }
+    } catch (err: any) {
+        setLoading(false);
+        setError(err.message || "Ocorreu um erro inesperado");
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <div className="w-full max-w-sm bg-white shadow rounded p-6">
         <div className="flex flex-col items-center mb-4">
           <img src="/icons/logo cartonificio.png" alt="Cartonifício Valinhos" className="w-24 max-h-20 object-contain mb-2" />
-          <h1 className="text-xl font-semibold">Seja bem vindo</h1>
+          <h1 className="text-xl font-semibold">
+            {step === 'credentials' && "Seja bem vindo"}
+            {step === '2fa' && "Verificação em Duas Etapas"}
+            {step === 'setup' && "Configurar 2FA"}
+          </h1>
         </div>
+        
         <form onSubmit={onSubmit} className="space-y-3">
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">E-mail</label>
-            <input
-              type="email"
-              className="w-full border rounded px-3 py-2"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">Senha</label>
-            <input
-              type="password"
-              className="w-full border rounded px-3 py-2"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
+          {step === 'credentials' && (
+            <>
+                <div>
+                    <label className="block text-sm text-gray-600 mb-1">E-mail</label>
+                    <input
+                    type="email"
+                    className="w-full border rounded px-3 py-2"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm text-gray-600 mb-1">Senha</label>
+                    <input
+                    type="password"
+                    className="w-full border rounded px-3 py-2"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    />
+                </div>
+            </>
+          )}
+
+          {step === '2fa' && (
+             <div>
+                <p className="text-sm text-gray-600 mb-2">
+                    Insira o código gerado pelo seu aplicativo autenticador.
+                </p>
+                <label className="block text-sm text-gray-600 mb-1">Código de Verificação</label>
+                <input
+                    type="text"
+                    className="w-full border rounded px-3 py-2 text-center text-lg tracking-widest"
+                    value={twoFactorCode}
+                    onChange={(e) => setTwoFactorCode(e.target.value)}
+                    placeholder="000000"
+                    required
+                />
+             </div>
+          )}
+
+          {step === 'setup' && (
+              <div className="flex flex-col items-center">
+                  <p className="text-sm text-gray-600 mb-2 text-center">
+                      Escaneie o QR Code abaixo com o Google Authenticator ou outro app compatível.
+                  </p>
+                  {qrCodeUrl ? (
+                      <img src={qrCodeUrl} alt="QR Code 2FA" className="w-48 h-48 mb-4 border rounded" />
+                  ) : (
+                      <div className="w-48 h-48 mb-4 border rounded flex items-center justify-center bg-gray-100 text-gray-400">
+                          Carregando...
+                      </div>
+                  )}
+                  <p className="text-xs text-gray-500 mb-4 break-all text-center">
+                      Chave: {tempSecret}
+                  </p>
+                  <div className="w-full">
+                    <label className="block text-sm text-gray-600 mb-1">Código de Verificação</label>
+                    <input
+                        type="text"
+                        className="w-full border rounded px-3 py-2 text-center text-lg tracking-widest"
+                        value={twoFactorCode}
+                        onChange={(e) => setTwoFactorCode(e.target.value)}
+                        placeholder="000000"
+                        required
+                    />
+                  </div>
+              </div>
+          )}
+
           {error && (
             <div className="text-sm text-red-600">{error}</div>
           )}
+          
           <button
             type="submit"
             className="w-full px-3 py-2 bg-gray-800 text-white rounded"
             disabled={loading}
           >
-            {loading ? "Entrando..." : "Entrar"}
+            {loading ? "Processando..." : (step === 'credentials' ? "Entrar" : (step === 'setup' ? "Validar e Ativar" : "Verificar"))}
           </button>
-          <div className="flex justify-end mt-2">
-            <button
-              type="button"
-              className="text-sm text-blue-700 hover:underline"
-              onClick={() => {
-                setShowForgot(true);
-                setForgotStep(1);
-                setForgotEmail("");
-                setForgotDigits(["", "", "", "", "", ""]);
-                setForgotMsg(null);
-                setForgotError(null);
-              }}
-            >
-              Esqueci Minha Senha
-            </button>
-          </div>
+
+          {step !== 'credentials' && (
+              <button
+                type="button"
+                className="w-full mt-2 text-sm text-gray-600 hover:underline"
+                onClick={() => {
+                    setStep('credentials');
+                    setError(null);
+                    setTwoFactorCode("");
+                }}
+              >
+                  Voltar para login
+              </button>
+          )}
+
+          {step === 'credentials' && (
+            <div className="flex justify-end mt-2">
+                <button
+                type="button"
+                className="text-sm text-blue-700 hover:underline"
+                onClick={() => {
+                    setShowForgot(true);
+                    setForgotStep(1);
+                    setForgotEmail("");
+                    setForgotDigits(["", "", "", "", "", ""]);
+                    setForgotMsg(null);
+                    setForgotError(null);
+                }}
+                >
+                Esqueci Minha Senha
+                </button>
+            </div>
+          )}
         </form>
       </div>
 

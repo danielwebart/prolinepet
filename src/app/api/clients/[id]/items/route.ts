@@ -38,6 +38,19 @@ export async function POST(request: Request, { params }: { params: { id: string 
             continue;
         }
 
+        // Atualiza dados do item se fornecidos
+        const itemUpdate: any = {};
+        if (body.width !== undefined) itemUpdate.width = Number(body.width);
+        if (body.length !== undefined) itemUpdate.length = Number(body.length);
+        if (body.grammage !== undefined) itemUpdate.grammage = Number(body.grammage);
+        
+        if (Object.keys(itemUpdate).length > 0) {
+            await prisma.inventoryItem.update({
+                where: { id: inventoryItemId },
+                data: itemUpdate
+            });
+        }
+
         const existing = await prisma.clientItem.findFirst({ where: { clientId, inventoryItemId } });
         const row = existing
           ? await prisma.clientItem.update({ where: { id: existing.id }, data: { unit, unitPrice, allowed } })
