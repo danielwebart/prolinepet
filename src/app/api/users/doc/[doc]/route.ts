@@ -53,6 +53,19 @@ export async function PATCH(request: Request, { params }: { params: { doc: strin
     if (body.email !== undefined) fields.email = String(body.email);
     if (body.doc !== undefined) fields.doc = normalizeDoc(String(body.doc || '')) || null;
     if (body.salesRepAdmin !== undefined) fields.salesRepAdmin = Boolean(body.salesRepAdmin);
+
+    // Check email uniqueness if email is being updated
+    if (fields.email !== undefined && fields.email !== null && fields.email !== '') {
+      const emailCheck: any[] = await prisma.$queryRawUnsafe(`SELECT id, doc FROM "User" WHERE email='${String(fields.email).replace(/'/g,"''")}' LIMIT 1`);
+      if (emailCheck.length > 0) {
+        const found = emailCheck[0];
+        // If found doc is different from current doc, it's a duplicate
+        if (found.doc !== doc) {
+          fields.email = null;
+        }
+      }
+    }
+
     const keys = Object.keys(fields);
     if (keys.length === 0) return NextResponse.json({ message: 'Nada para atualizar' });
     const esc = (v: any) => v === null || v === undefined ? 'NULL' : `'${String(v).replace(/'/g, "''")}'`;

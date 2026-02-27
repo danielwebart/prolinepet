@@ -44,6 +44,8 @@ type SalesOrder = {
   customerName: string;
   customerId?: number;
   customerDoc?: string | null;
+  triangularCustomerName?: string | null;
+  triangularCustomerDoc?: string | null;
   paymentTerms?: string | null;
   deliveryDate?: string | null;
   notes?: string | null;
@@ -235,8 +237,18 @@ function NewSalesOrderContent() {
   }, [customerIdParam]);
   
   const [currentDate, setCurrentDate] = useState('');
+  const [sessionEntity, setSessionEntity] = useState<{ id: number; name: string; cnpj: string } | null>(null);
+
   useEffect(() => {
     setCurrentDate(new Date().toLocaleDateString('pt-BR'));
+    fetch('/api/session/entity')
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.entity) {
+          setSessionEntity(data.entity);
+        }
+      })
+      .catch(console.error);
   }, []);
   
   const [showFeaturesFor, setShowFeaturesFor] = useState<number | null>(null);
@@ -250,6 +262,12 @@ function NewSalesOrderContent() {
 
     const searchClientItems = async (term: string) => {
     if (!term) {
+      setSearchResults([]);
+      return;
+    }
+
+    if (!order.customerId) {
+      // If no customer selected, do not search
       setSearchResults([]);
       return;
     }
@@ -332,7 +350,11 @@ function NewSalesOrderContent() {
         body: JSON.stringify({
           customerName: order.customerName,
           customerDoc: order.customerDoc,
+          triangularCustomerName: order.triangularCustomerName,
+          triangularCustomerDoc: order.triangularCustomerDoc,
+          entityCnpj: sessionEntity?.cnpj,
           paymentTerms: order.paymentTerms,
+
           deliveryDate: order.deliveryDate,
           items: order.items?.map(it => ({
             inventoryItemId: it.inventoryItem?.id,
@@ -475,16 +497,19 @@ function NewSalesOrderContent() {
         {/* Header */}
         <div className="border rounded bg-white p-4 text-sm">
           <div className="flex items-start gap-3">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-1">
-              <div>
-                <span className="text-gray-600">Número</span>
-                <div className="font-mono mt-1 text-gray-400">(Automático)</div>
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 flex-1">
+              <div className="md:col-span-12 flex gap-8">
+                <div>
+                  <span className="text-gray-600">Número</span>
+                  <div className="font-mono mt-1 text-gray-400">(Automático)</div>
+                </div>
+                <div>
+                  <span className="text-gray-600">Data</span>
+                  <div className="mt-1">{currentDate}</div>
+                </div>
               </div>
-              <div>
-                <span className="text-gray-600">Data</span>
-                <div className="mt-1">{currentDate}</div>
-              </div>
-              <div>
+
+              <div className="md:col-span-6">
                 <AsyncSelect
                   label="Cliente"
                   value={order.customerName || ''}
@@ -501,34 +526,53 @@ function NewSalesOrderContent() {
                   )}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <AsyncSelect
-                    label="Condição de pagamento"
-                    value={order.paymentTerms || ''}
-                    onChange={(val) => setOrder(prev => ({ ...prev, paymentTerms: val }))}
-                    fetchUrl={(q) => `/api/base/payment-terms?q=${q}`}
-                    placeholder="Busque por descrição ou código"
-                    getLabel={(item) => item.description}
-                    renderOption={(item) => (
-                      <div>
-                        <div className="font-medium">{item.description}</div>
-                        <div className="text-xs text-gray-500">Cód: {item.code} - Parcelas: {item.installments}</div>
-                      </div>
-                    )}
-                  />
-                </div>
-                <div>
-                  <span className="text-gray-600">Entrega</span>
-                  <input 
-                    type="date" 
-                    className="mt-1 w-full px-2 py-1 border rounded" 
-                    value={order.deliveryDate ?? ''} 
-                    onChange={(e) => setOrder(prev => ({ ...prev, deliveryDate: e.target.value }))} 
-                  />
-                </div>
+
+              <div className="md:col-span-3">
+                <AsyncSelect
+                  label="Condição de pagamento"
+                  value={order.paymentTerms || ''}
+                  onChange={(val) => setOrder(prev => ({ ...prev, paymentTerms: val }))}
+                  fetchUrl={(q) => `/api/base/payment-terms?q=${q}`}
+                  placeholder="Busque por descrição ou código"
+                  getLabel={(item) => item.description}
+                  renderOption={(item) => (
+                    <div>
+                      <div className="font-medium">{item.description}</div>
+                      <div className="text-xs text-gray-500">Cód: {item.code} - Parcelas: {item.installments}</div>
+                    </div>
+                  )}
+                />
               </div>
-              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="md:col-span-3">
+                <span className="text-gray-600">Entrega</span>
+                <input 
+                  type="date" 
+                  className="mt-1 w-full px-2 py-1 border rounded" 
+                  value={order.deliveryDate ?? ''} 
+                  onChange={(e) => setOrder(prev => ({ ...prev, deliveryDate: e.target.value }))} 
+                />
+              </div>
+
+              <div className="md:col-span-6">
+                <AsyncSelect
+                  label="Cliente Remessa Triangular"
+                  value={order.triangularCustomerName || ''}
+                  onChange={(val) => setOrder(prev => ({ ...prev, triangularCustomerName: val }))}
+                  onSelectObj={(c) => setOrder(prev => ({ ...prev, triangularCustomerName: c.name, triangularCustomerDoc: c.doc }))}
+                  fetchUrl={(q) => `/api/base/clients?q=${q}`}
+                  placeholder="Busque por nome ou documento"
+                  getLabel={(c) => c.name}
+                  renderOption={(c) => (
+                    <div>
+                      <div className="font-medium">{c.name}</div>
+                      <div className="text-xs text-gray-500">{c.doc}</div>
+                    </div>
+                  )}
+                />
+              </div>
+              <div className="md:col-span-6"></div>
+
+              <div className="md:col-span-12 grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <span className="text-gray-600">Total Sem Imp R$</span>
                   <div className="mt-1 w-full px-2 py-1 border rounded bg-gray-50 text-gray-800">{fmtCurrency(globalTotalNoTax)}</div>
@@ -573,7 +617,14 @@ function NewSalesOrderContent() {
         <div className="border rounded bg-white">
           <div className="px-3 py-2 border-b flex items-center gap-2">
             <span className="text-sm text-gray-700">Itens</span>
-            <button className="ml-auto px-2 py-1 text-xs border rounded bg-white hover:bg-gray-100" onClick={() => { setAddingItems(true); setSearchTerm(''); setSearchResults([]); }}>Adicionar itens</button>
+            <button 
+              className={`ml-auto px-2 py-1 text-xs border rounded bg-white hover:bg-gray-100 ${!order.customerId ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={!order.customerId}
+              title={!order.customerId ? "Selecione um cliente primeiro" : ""}
+              onClick={() => { setAddingItems(true); setSearchTerm(''); setSearchResults([]); }}
+            >
+              Adicionar itens
+            </button>
           </div>
           {addingItems && (
             <div className="p-3 border-b">
@@ -637,6 +688,7 @@ function NewSalesOrderContent() {
                       key={it.id}
                       item={it}
                       isOrderEditable={true}
+                      canDelete={true}
                       onPreviewUpdate={(updated) => updateItem(it.id, updated)}
                       onDelete={() => removeItem(it.id)}
                       showFeatures={showFeaturesFor === it.id}

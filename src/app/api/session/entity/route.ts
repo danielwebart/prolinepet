@@ -3,6 +3,33 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../lib/auth';
 import { prisma } from '../../../../lib/prisma';
 
+// GET: Retorna a entidade ativa do usuário
+export async function GET(request: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    const uid = session?.user ? Number((session.user as any).id) : undefined;
+    if (!uid) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+
+    const user = await prisma.user.findUnique({
+      where: { id: uid },
+      select: { lastEntityId: true }
+    });
+
+    if (!user?.lastEntityId) {
+      return NextResponse.json({ entity: null });
+    }
+
+    const entity = await prisma.entity.findUnique({
+      where: { id: user.lastEntityId },
+      select: { id: true, name: true, cnpj: true }
+    });
+
+    return NextResponse.json({ entity });
+  } catch (err: any) {
+    return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
+  }
+}
+
 // POST: { entityId } -> define entidade ativa gravando em User.lastEntityId
 export async function POST(request: Request) {
   try {

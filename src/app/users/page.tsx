@@ -150,6 +150,22 @@ export default function UsersPage() {
     finally { setLoading(false); }
   };
 
+  const toggleSalesAdmin = async (checked: boolean) => {
+    if (!selectedUserId) return;
+    setLoading(true); setErr(null);
+    try {
+      const res = await fetch(`/api/users/${selectedUserId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isSalesAdmin: checked })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
+      // Atualizar lista mantendo seleção
+      await loadUsers();
+      setSelectedUserId(data.id);
+    } catch (e: any) { setErr(e?.message || String(e)); }
+    finally { setLoading(false); }
+  };
+
   const toggleTwoFactorRequired = async (checked: boolean) => {
     if (!selectedUserId) return;
     setLoading(true); setErr(null);
@@ -449,7 +465,16 @@ export default function UsersPage() {
             checked={Boolean(selectedUser?.salesRepAdmin)}
             onChange={(ev) => toggleSalesRepAdmin(ev.target.checked)}
           />
-          Representante/Adm Vendas
+          Representante
+        </label>
+        <label className="text-sm flex items-center gap-1 mt-1">
+          <input
+            type="checkbox"
+            disabled={!selectedUser}
+            checked={Boolean(selectedUser?.isSalesAdmin)}
+            onChange={(ev) => toggleSalesAdmin(ev.target.checked)}
+          />
+          Adm Vendas
         </label>
         <div className="flex items-center gap-2 mt-1">
           <label className="text-base flex items-center gap-1">

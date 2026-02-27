@@ -76,6 +76,10 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const allowed: Record<string, any> = {};
     if (typeof body.status === 'string') {
       allowed.status = String(body.status);
+      const s = allowed.status.trim().toUpperCase();
+      if (s === 'OPEN' || s === 'ORÇAMENTO' || s === 'ORCAMENTO') {
+        allowed.erpOrderNumber = null;
+      }
     }
     if (typeof body.paymentTerms === 'string') {
       allowed.paymentTerms = String(body.paymentTerms);
@@ -89,6 +93,12 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     }
     if (typeof body.customerDoc === 'string') {
       allowed.customerDoc = String(body.customerDoc);
+    }
+    if (typeof body.triangularCustomerName === 'string') {
+      allowed.triangularCustomerName = String(body.triangularCustomerName);
+    }
+    if (typeof body.triangularCustomerDoc === 'string') {
+      allowed.triangularCustomerDoc = String(body.triangularCustomerDoc);
     }
     if (typeof body.totalInvoiced === 'number') {
       allowed.totalInvoiced = Number(body.totalInvoiced);

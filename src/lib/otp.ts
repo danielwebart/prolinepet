@@ -31,11 +31,16 @@ export const authenticator = {
      */
     verify: async (options: { token: string; secret: string }) => {
         // verify returns a Promise<VerifyResult> in v13
-        const result = await totp.verify(options.token, { 
-            secret: options.secret
-            // epochTolerance defaults to 0 (strict). 
-            // If window support is needed, add epochTolerance: 30 here.
-        });
-        return result && result.valid;
+        // Using window: 1 allows for ±30s clock skew
+        try {
+            const isValid = await totp.verify(options.token, { 
+                secret: options.secret,
+                window: 1
+            } as any);
+            return isValid;
+        } catch (e) {
+            console.error('TOTP verify error:', e);
+            return false;
+        }
     }
 };

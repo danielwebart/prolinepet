@@ -8,6 +8,7 @@ type SalesOrder = {
   status: string;
   orderDate: string;
   customerName: string;
+  entity?: { name: string };
   subtotal: number;
   discountTotal: number;
   total: number;
@@ -41,28 +42,6 @@ export default function SalesOrdersPage() {
     };
     load();
   }, []);
-
-  const filtered = useMemo(() => {
-    const qLower = q.trim().toLowerCase();
-    const ds = dateStart ? new Date(dateStart) : null;
-    const de = dateEnd ? new Date(dateEnd) : null;
-    return (orders || [])
-      .filter((o) => (status ? statusLabelPt(o.status) === status : true))
-      .filter((o) => {
-        if (!qLower) return true;
-        return (
-          (o.code || '').toLowerCase().includes(qLower) ||
-          (o.customerName || '').toLowerCase().includes(qLower)
-        );
-      })
-      .filter((o) => {
-        const d = o.orderDate ? new Date(o.orderDate) : null;
-        if (!d) return true;
-        if (ds && d < ds) return false;
-        if (de && d > de) return false;
-        return true;
-      });
-  }, [orders, q, status, dateStart, dateEnd]);
 
   const statusColor = (s: string) => {
     const v = (s || '').trim();
@@ -102,6 +81,28 @@ export default function SalesOrdersPage() {
       default: return s || '-';
     }
   };
+
+  const filtered = useMemo(() => {
+    const qLower = q.trim().toLowerCase();
+    const ds = dateStart ? new Date(dateStart) : null;
+    const de = dateEnd ? new Date(dateEnd) : null;
+    return (orders || [])
+      .filter((o) => (status ? statusLabelPt(o.status) === status : true))
+      .filter((o) => {
+        if (!qLower) return true;
+        return (
+          (o.code || '').toLowerCase().includes(qLower) ||
+          (o.customerName || '').toLowerCase().includes(qLower)
+        );
+      })
+      .filter((o) => {
+        const d = o.orderDate ? new Date(o.orderDate) : null;
+        if (!d) return true;
+        if (ds && d < ds) return false;
+        if (de && d > de) return false;
+        return true;
+      });
+  }, [orders, q, status, dateStart, dateEnd]);
 
   const IconBtn = ({ title, onClick, children, disabled = false }: any) => (
     <button
@@ -196,6 +197,7 @@ export default function SalesOrdersPage() {
             <thead className="bg-gray-100 text-gray-700">
               <tr>
                 <th className="text-left px-3 py-2">Número</th>
+                <th className="text-left px-3 py-2">Entidade</th>
                 <th className="text-left px-3 py-2">Cliente</th>
                 <th className="text-left px-3 py-2">Data</th>
                 <th className="text-right px-3 py-2">Total Com Imp R$</th>
@@ -205,14 +207,15 @@ export default function SalesOrdersPage() {
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={6} className="px-3 py-4 text-center text-gray-500">Carregando...</td></tr>
+                <tr><td colSpan={7} className="px-3 py-4 text-center text-gray-500">Carregando...</td></tr>
               )}
               {!loading && filtered.length === 0 && (
-                <tr><td colSpan={6} className="px-3 py-4 text-center text-gray-500">Nenhum pedido encontrado.</td></tr>
+                <tr><td colSpan={7} className="px-3 py-4 text-center text-gray-500">Nenhum pedido encontrado.</td></tr>
               )}
               {!loading && filtered.map((o) => (
                 <tr key={o.id} className="border-t hover:bg-gray-50">
                   <td className="px-3 py-2 font-mono text-xs">{o.code || o.id}</td>
+                  <td className="px-3 py-2 text-xs text-gray-600">{o.entity?.name || '-'}</td>
                   <td className="px-3 py-2">{o.customerName || '-'}</td>
                   <td className="px-3 py-2">{o.orderDate ? new Date(o.orderDate).toLocaleDateString('pt-BR') : '-'}</td>
                   <td className="px-3 py-2 text-right">

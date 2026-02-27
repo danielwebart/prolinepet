@@ -13,8 +13,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'Código inválido ou expirado' }, { status: 400 });
     }
 
-    // Opcional: limpar o código após verificação bem-sucedida
-    clearResetCode(email);
+    // Não limpar o código aqui, pois será usado na redefinição de senha
+    // clearResetCode(email);
 
     return NextResponse.json({ ok: true, message: 'Código verificado' });
   } catch (err) {

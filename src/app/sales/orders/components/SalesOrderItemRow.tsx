@@ -49,11 +49,65 @@ export function supportsSheetDims(it: OrderItem): boolean {
 
 export function supportsCoreDims(it: OrderItem): boolean {
   const fam = (it.inventoryItem?.commercialFamily?.name || '').toUpperCase();
-  const name = (it.name || '').toUpperCase();
-  if (fam.includes('MIOL')) return true;
-  if (name.includes('MIOL')) return true;
-  return (it.diameter != null) || (it.tube != null);
+  if (fam.includes('MIOLO')) return true;
+  if (fam.includes('PAPEL') && !fam.includes('PAPELAO')) return true;
+  return false;
 }
+
+const FormattedIntInput = ({ 
+  value, 
+  onChange, 
+  disabled, 
+  className,
+  placeholder 
+}: { 
+  value?: number | null, 
+  onChange: (val: number | null) => void, 
+  disabled?: boolean, 
+  className?: string,
+  placeholder?: string
+}) => {
+  const [str, setStr] = useState(value !== undefined && value !== null ? value.toLocaleString('pt-BR') : '');
+
+  useEffect(() => {
+    if (value === undefined || value === null) {
+      if (str !== '') setStr('');
+    } else {
+        const currentInt = parseInt(str.replace(/\./g, ''), 10);
+        if (isNaN(currentInt) || currentInt !== value) {
+            setStr(value.toLocaleString('pt-BR'));
+        }
+    }
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    const digits = raw.replace(/\D/g, '');
+    
+    if (digits === '') {
+      setStr('');
+      onChange(null);
+      return;
+    }
+
+    const intVal = parseInt(digits, 10);
+    const formatted = intVal.toLocaleString('pt-BR');
+    
+    setStr(formatted);
+    onChange(intVal);
+  };
+
+  return (
+    <input
+      type="text"
+      className={className}
+      disabled={disabled}
+      placeholder={placeholder}
+      value={str}
+      onChange={handleChange}
+    />
+  );
+};
 
 interface SalesOrderItemRowProps {
   item: OrderItem;
@@ -68,6 +122,7 @@ interface SalesOrderItemRowProps {
   fmtInt: (n?: number) => string;
   hasSheetCol: boolean;
   hasCoreCol: boolean;
+  canDelete: boolean;
 }
 
 export const SalesOrderItemRow = ({
@@ -82,7 +137,8 @@ export const SalesOrderItemRow = ({
   computeWeightKg,
   fmtInt,
   hasSheetCol,
-  hasCoreCol
+  hasCoreCol,
+  canDelete
 }: SalesOrderItemRowProps) => {
   const [localItem, setLocalItem] = useState<OrderItem>(item);
   const [discountInput, setDiscountInput] = useState(
@@ -192,30 +248,27 @@ export const SalesOrderItemRow = ({
         {hasSheetCol && (
             <>
                 <td className="p-2">{showWidthLengthGram ? (
-                    <input 
-                        type="number" step="1" 
+                    <FormattedIntInput 
                         className={`w-24 px-2 py-1 border rounded ${!canEdit ? disabledClass : ''}`}
                         disabled={!canEdit}
-                        value={localItem.width ?? ''} 
-                        onChange={(e) => handleChange('width', e.target.value ? parseInt(e.target.value, 10) : null)} 
+                        value={localItem.width} 
+                        onChange={(val) => handleChange('width', val)} 
                     />
                 ) : '-'}</td>
                 <td className="p-2">{showWidthLengthGram ? (
-                    <input 
-                        type="number" step="1" 
+                    <FormattedIntInput 
                         className={`w-24 px-2 py-1 border rounded ${!canEdit ? disabledClass : ''}`}
                         disabled={!canEdit}
-                        value={localItem.length ?? ''} 
-                        onChange={(e) => handleChange('length', e.target.value ? parseInt(e.target.value, 10) : null)} 
+                        value={localItem.length} 
+                        onChange={(val) => handleChange('length', val)} 
                     />
                 ) : '-'}</td>
                 <td className="p-2">{showWidthLengthGram ? (
-                    <input 
-                        type="number" step="1" 
+                    <FormattedIntInput 
                         className={`w-24 px-2 py-1 border rounded ${!canEdit ? disabledClass : ''}`}
                         disabled={!canEdit}
-                        value={localItem.grammage ?? ''} 
-                        onChange={(e) => handleChange('grammage', e.target.value ? parseInt(e.target.value, 10) : null)} 
+                        value={localItem.grammage} 
+                        onChange={(val) => handleChange('grammage', val)} 
                     />
                 ) : '-'}</td>
             </>
@@ -245,15 +298,11 @@ export const SalesOrderItemRow = ({
         )}
 
         <td className="p-2">
-            <input 
-                type="text" 
+            <FormattedIntInput 
                 className={`w-20 px-2 py-1 border rounded ${!canEdit ? disabledClass : ''}`}
                 disabled={!canEdit}
-                value={localItem.quantity ?? ''} 
-                onChange={(e) => { 
-                    const v = e.target.value.replace(/\D/g, ''); 
-                    handleChange('quantity', v === '' ? undefined : parseInt(v, 10));
-                }} 
+                value={localItem.quantity} 
+                onChange={(val) => handleChange('quantity', val ?? 0)} 
             />
         </td>
         <td className="p-2">
@@ -296,7 +345,7 @@ export const SalesOrderItemRow = ({
                 >
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 0 0 1-2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"></path></svg>
                 </button>
-                <button className={`inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700 ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`} title="Excluir" disabled={!canEdit} onClick={onDelete}>
+                <button className={`inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700 ${!canDelete ? 'opacity-50 cursor-not-allowed' : ''}`} title="Excluir" disabled={!canDelete} style={{ opacity: !canDelete ? 0.5 : 1, pointerEvents: !canDelete ? 'none' : 'auto' }} onClick={onDelete}>
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 </button>
             </div>
@@ -314,24 +363,22 @@ export const SalesOrderItemRow = ({
                     {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
                     <div key={n} className="flex items-center gap-1">
                         <span className="text-xs text-gray-500 w-3">{n}</span>
-                        <input 
-                        type="number" 
-                        className={`w-16 px-2 py-1 border rounded text-sm ${!canEdit ? disabledClass : ''}`}
-                        placeholder="0" 
-                        disabled={!canEdit}
-                        value={localItem.creases?.[n] ?? ''}
-                        onChange={(e) => {
-                            const val = e.target.value ? parseInt(e.target.value, 10) : undefined;
-                            const newCreases = { ...(localItem.creases || {}), [n]: val === undefined ? 0 : val };
-                            handleChange('creases', newCreases);
-                        }}
+                        <FormattedIntInput 
+                            className={`w-16 px-2 py-1 border rounded text-sm ${!canEdit ? disabledClass : ''}`}
+                            placeholder="0" 
+                            disabled={!canEdit}
+                            value={localItem.creases?.[n]}
+                            onChange={(val) => {
+                                const newCreases = { ...(localItem.creases || {}), [n]: val === null ? 0 : val };
+                                handleChange('creases', newCreases);
+                            }}
                         />
                     </div>
                     ))}
                 </div>
                 </div>
                 <div className="space-y-1">
-                <label className="text-xs text-gray-600 block">Pedido Cliente</label>
+                <label className="text-xs text-gray-600 block">Número Ordem Compra</label>
                 <input 
                     type="text" 
                     className={`w-48 px-2 py-1 border rounded text-sm ${!canEdit ? disabledClass : ''}`}
@@ -341,7 +388,7 @@ export const SalesOrderItemRow = ({
                 />
                 </div>
                 <div className="space-y-1">
-                <label className="text-xs text-gray-600 block">Item Pedido</label>
+                <label className="text-xs text-gray-600 block">Seq Item Ordem</label>
                 <input 
                     type="number" 
                     className={`w-24 px-2 py-1 border rounded text-sm ${!canEdit ? disabledClass : ''}`}

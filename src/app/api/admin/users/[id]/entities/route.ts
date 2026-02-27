@@ -79,7 +79,18 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       }
     } else {
       if (existing.length > 0) {
-        await prisma.$executeRawUnsafe(`DELETE FROM "UserEntity" WHERE "id"=${existing[0].id}`);
+        const userEntityId = existing[0].id;
+        // Primeiro remove os programas vinculados aos módulos desta entidade
+        await prisma.$executeRawUnsafe(`
+          DELETE FROM "UserEntityModuleProgram"
+          WHERE "userEntityModuleId" IN (
+            SELECT "id" FROM "UserEntityModule" WHERE "userEntityId"=${userEntityId}
+          )
+        `);
+        // Remove os módulos vinculados a esta entidade
+        await prisma.$executeRawUnsafe(`DELETE FROM "UserEntityModule" WHERE "userEntityId"=${userEntityId}`);
+        // Por fim remove o vínculo da entidade
+        await prisma.$executeRawUnsafe(`DELETE FROM "UserEntity" WHERE "id"=${userEntityId}`);
       }
     }
     return NextResponse.json({ ok: true });

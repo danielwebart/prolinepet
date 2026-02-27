@@ -7,7 +7,7 @@ import QRCode from 'qrcode';
 function LoginForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams?.get("callbackUrl") || "/";
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,9 +21,11 @@ function LoginForm() {
 
   // Forgot Password States
   const [showForgot, setShowForgot] = useState(false);
-  const [forgotStep, setForgotStep] = useState<1 | 2>(1);
+  const [forgotStep, setForgotStep] = useState<1 | 2 | 3>(1);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotDigits, setForgotDigits] = useState<string[]>(["", "", "", "", "", ""]);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotMsg, setForgotMsg] = useState<string | null>(null);
@@ -71,6 +73,41 @@ function LoginForm() {
     }
   };
 
+  const formatIdentifier = (value: string) => {
+    // Se conter @ ou letras, não formata (trata como email)
+    if (value.includes('@') || /[a-zA-Z]/.test(value)) {
+        return value;
+    }
+
+    // Remove tudo que não for número
+    const numeric = value.replace(/\D/g, '');
+
+    // Limita a 14 dígitos (CNPJ)
+    const truncated = numeric.slice(0, 14);
+
+    if (truncated.length === 0) return '';
+
+    // Formatação CPF (até 11 dígitos)
+    if (truncated.length <= 11) {
+        return truncated
+            .replace(/(\d{3})(\d)/, '$1.$2')
+            .replace(/(\d{3})(\d)/, '$1.$2')
+            .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+    }
+
+    // Formatação CNPJ (12 a 14 dígitos)
+    return truncated
+        .replace(/^(\d{2})(\d)/, '$1.$2')
+        .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+        .replace(/\.(\d{3})(\d)/, '.$1/$2')
+        .replace(/(\d{4})(\d)/, '$1-$2');
+  };
+
+  const handleIdentifierChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const formatted = formatIdentifier(e.target.value);
+      setIdentifier(formatted);
+  };
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -81,7 +118,7 @@ function LoginForm() {
         const checkRes = await fetch('/api/auth/check-2fa', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
+            body: JSON.stringify({ email: identifier, password })
         });
         const checkData = await checkRes.json();
         
@@ -102,16 +139,16 @@ function LoginForm() {
                 setLoading(false);
             }
         } else {
-            await performSignIn({ email, password });
+            await performSignIn({ email: identifier, password });
         }
       } else if (step === '2fa') {
-        await performSignIn({ email, password, twoFactorCode });
+        await performSignIn({ email: identifier, password, twoFactorCode });
       } else if (step === 'setup') {
         // Verify setup first
         const verifyRes = await fetch('/api/auth/verify-2fa-setup', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, secret: tempSecret, token: twoFactorCode })
+            body: JSON.stringify({ email: identifier, password, secret: tempSecret, token: twoFactorCode })
         });
         const verifyData = await verifyRes.json();
         if (!verifyRes.ok) {
@@ -120,7 +157,7 @@ function LoginForm() {
             return;
         }
         // If verified, proceed to login
-        await performSignIn({ email, password, twoFactorCode });
+        await performSignIn({ email: identifier, password, twoFactorCode });
       }
     } catch (err: any) {
         setLoading(false);
@@ -144,12 +181,12 @@ function LoginForm() {
           {step === 'credentials' && (
             <>
                 <div>
-                    <label className="block text-sm text-gray-600 mb-1">E-mail</label>
+                    <label className="block text-sm text-gray-600 mb-1">E-mail, CPF ou CNPJ</label>
                     <input
-                    type="email"
+                    type="text"
                     className="w-full border rounded px-3 py-2"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    value={identifier}
+                    onChange={handleIdentifierChange}
                     required
                     />
                 </div>
@@ -350,6 +387,10 @@ function LoginForm() {
                       setForgotError(data?.message || 'Código inválido ou expirado');
                     } else {
                       setForgotMsg('Código verificado com sucesso.');
+                      setTimeout(() => {
+                        setForgotStep(3);
+                        setForgotMsg(null);
+                      }, 1000);
                     }
                   } catch (err) {
                     setForgotError('Erro de rede. Tente novamente.');
@@ -417,6 +458,87 @@ function LoginForm() {
                     {forgotLoading ? 'Verificando...' : 'Verificar código'}
                   </button>
                 </div>
+              </form>
+            )}
+
+            {forgotStep === 3 && (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (newPassword !== confirmPassword) {
+                    setForgotError("As senhas não conferem");
+                    return;
+                  }
+                  if (newPassword.length < 6) {
+                    setForgotError("A senha deve ter pelo menos 6 caracteres");
+                    return;
+                  }
+                  
+                  setForgotLoading(true);
+                  setForgotMsg(null);
+                  setForgotError(null);
+                  const code = forgotDigits.join("");
+                  
+                  try {
+                    const res = await fetch('/api/auth/forgot/reset', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ email: forgotEmail, code, password: newPassword })
+                    });
+                    const data = await res.json();
+                    
+                    if (!res.ok) {
+                      setForgotError(data?.message || 'Erro ao redefinir senha');
+                    } else {
+                      setForgotMsg('Senha alterada com sucesso! Você já pode fazer login.');
+                      setTimeout(() => {
+                        setShowForgot(false);
+                        setForgotStep(1);
+                        setForgotDigits(["", "", "", "", "", ""]);
+                        setNewPassword("");
+                        setConfirmPassword("");
+                        setForgotMsg(null);
+                      }, 2000);
+                    }
+                  } catch (err) {
+                    setForgotError('Erro de rede. Tente novamente.');
+                  } finally {
+                    setForgotLoading(false);
+                  }
+                }}
+                className="space-y-3"
+              >
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Nova Senha</label>
+                  <input
+                    type="password"
+                    className="w-full border rounded px-3 py-2"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 mb-1">Confirmar Nova Senha</label>
+                  <input
+                    type="password"
+                    className="w-full border rounded px-3 py-2"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                  />
+                </div>
+
+                {forgotError && <div className="text-sm text-red-600">{forgotError}</div>}
+                {forgotMsg && <div className="text-sm text-green-700">{forgotMsg}</div>}
+                
+                <button
+                  type="submit"
+                  className="w-full px-3 py-2 bg-blue-700 text-white rounded"
+                  disabled={forgotLoading}
+                >
+                  {forgotLoading ? 'Salvando...' : 'Salvar Nova Senha'}
+                </button>
               </form>
             )}
           </div>

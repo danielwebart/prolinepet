@@ -17,12 +17,24 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
-        // Tentar autenticar usuário do banco
-        let user = await prisma.user.findUnique({ where: { email: credentials.email } });
+        
+        const identifier = credentials.email;
+        let user: any = null;
+
+        // Tentar autenticar por Email ou Documento
+        if (identifier.includes('@')) {
+             user = await prisma.user.findUnique({ where: { email: identifier } });
+        } else {
+             const doc = identifier.replace(/\D/g, '');
+             if (doc) {
+                 user = await prisma.user.findUnique({ where: { doc } });
+             }
+        }
+
         // Se for a credencial TI estática e não existir no banco, criar e usar id numérico
-        if (!user && credentials.email === 'ti@cartonificiovalinhos.com.br' && credentials.password === 'Carto123') {
+        if (!user && identifier === 'ti@cartonificiovalinhos.com.br' && credentials.password === 'Carto123') {
           const hash = await bcrypt.hash(credentials.password, 10);
-          user = await prisma.user.create({ data: { email: credentials.email, name: 'TI', password: hash } });
+          user = await prisma.user.create({ data: { email: identifier, name: 'TI', password: hash } });
         }
         if (!user) return null;
         const valid = await bcrypt.compare(credentials.password, user.password);

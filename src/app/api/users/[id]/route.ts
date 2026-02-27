@@ -44,15 +44,16 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       data: {
         ...update,
         salesRepAdmin: body.salesRepAdmin !== undefined ? Boolean(body.salesRepAdmin) : undefined,
+        isSalesAdmin: body.isSalesAdmin !== undefined ? Boolean(body.isSalesAdmin) : undefined,
         twoFactorRequired: body.twoFactorRequired !== undefined ? Boolean(body.twoFactorRequired) : undefined,
       },
-      select: { id: true, name: true, email: true, createdAt: true, updatedAt: true, salesRepAdmin: true, twoFactorRequired: true, erpIntegrationMode: true }
+      select: { id: true, name: true, email: true, createdAt: true, updatedAt: true, salesRepAdmin: true, isSalesAdmin: true, twoFactorRequired: true, erpIntegrationMode: true }
     });
   if (body.doc !== undefined) {
     const doc = normalizeDoc(String(body.doc || '')) || null;
     await prisma.$executeRawUnsafe(`UPDATE "User" SET doc=${doc ? `'${doc}'` : 'NULL'} WHERE id=${id}`);
   }
-  const finalRow: any[] = await prisma.$queryRawUnsafe(`SELECT id, name, email, doc, "salesRepAdmin", "twoFactorRequired", "erpIntegrationMode", "createdAt", "updatedAt" FROM "User" WHERE id=${id} LIMIT 1`);
+  const finalRow: any[] = await prisma.$queryRawUnsafe(`SELECT id, name, email, doc, "salesRepAdmin", "isSalesAdmin", "twoFactorRequired", "erpIntegrationMode", "createdAt", "updatedAt" FROM "User" WHERE id=${id} LIMIT 1`);
     const final = finalRow[0] ?? updated;
     return NextResponse.json(final);
   } catch (err: any) {

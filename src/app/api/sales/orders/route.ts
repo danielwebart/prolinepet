@@ -49,6 +49,7 @@ export async function GET(request: Request) {
     const data = await prisma.salesOrder.findMany({
       where,
       include: {
+        entity: { select: { name: true } },
         items: {
           include: {
             inventoryItem: {
@@ -67,82 +68,141 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
-  const session = await getServerSession(authOptions);
-  const createdById = session?.user ? Number((session.user as any).id) : undefined;
-
-  let entityId: number | undefined;
-  if (createdById) {
-    const u = await prisma.user.findUnique({ where: { id: createdById }, select: { lastEntityId: true } });
-    if (u?.lastEntityId) entityId = u.lastEntityId;
-  }
-
-  const {
-    customerName,
-    customerDoc,
-    paymentTerms,
-    carrier,
-    deliveryDate,
-    notes,
-    items,
-  } = body || {};
-
-  if (!customerName) {
-    return NextResponse.json({ error: 'customerName é obrigatório' }, { status: 400 });
-  }
-
-  const normalizedItems = (Array.isArray(items) ? items : []).map((it: any) => {
-    const qty = Number(it.quantity || 1);
-    const price = Number(it.unitPrice || 0);
-    const disc = Number(it.discountPct || 0);
-    const lineTotal = qty * price * (1 - disc / 100);
-    return {
-      inventoryItemId: it.inventoryItemId ? Number(it.inventoryItemId) : undefined,
-      sku: it.sku || undefined,
-      name: String(it.name || it.productName || 'Produto'),
-      quantity: qty,
-      unit: it.unit || undefined,
-      unitPrice: price,
-      discountPct: disc,
-      width: it.width ? Number(it.width) : undefined,
-      length: it.length ? Number(it.length) : undefined,
-      grammage: it.grammage ? Number(it.grammage) : undefined,
-      diameter: it.diameter ? Number(it.diameter) : undefined,
-      tube: it.tube ? Number(it.tube) : undefined,
-      clientOrderNumber: it.clientOrderNumber || undefined,
-      clientOrderItemNumber: it.clientOrderItemNumber ? Number(it.clientOrderItemNumber) : undefined,
-      itemDeliveryDate: it.itemDeliveryDate ? new Date(it.itemDeliveryDate) : undefined,
-      internalResin: !!it.internalResin,
-      externalResin: !!it.externalResin,
-      creases: it.creases || undefined,
-      lineTotal,
-    };
-  });
-
-  const subtotal = normalizedItems.reduce((acc: number, i: any) => acc + i.quantity * i.unitPrice, 0);
-  const discountTotal = normalizedItems.reduce((acc: number, i: any) => acc + (i.quantity * i.unitPrice * (i.discountPct || 0) / 100), 0);
-  const total = normalizedItems.reduce((acc: number, i: any) => acc + i.lineTotal, 0);
-
-  const code = `ORD-${Date.now()}`;
-
-  const created = await prisma.salesOrder.create({
-    data: {
-      code,
-      entityId,
+  try {
+    const body = await request.json();
+    const session = await getServerSession(authOptions);
+    const createdById = session?.user ? Number((session.user as any).id) : undefined;
+    const {
       customerName,
-      customerDoc: customerDoc || undefined,
-      paymentTerms: paymentTerms || undefined,
-      carrier: carrier || undefined,
-      deliveryDate: deliveryDate ? new Date(deliveryDate) : undefined,
-      notes: notes || undefined,
-      createdById: createdById,
-      subtotal,
-      discountTotal,
-      total,
-      items: { create: normalizedItems },
-    },
-    include: { items: true },
-  });
-
-  return NextResponse.json(created, { status: 201 });
+      customerDoc,
+      triangularCustomerName,
+      triangularCustomerDoc,
+      paymentTerms,
+      carrier,
+      deliveryDate,
+      notes,
+      items,
+      entityCnpj,
+      entityDoc,
+    } = body || {};
+    if (!customerName) {
+      return NextResponse.json({ error: 'customerName é obrigatório' }, { status: 400 });
+    }
+    const parseDate = (value: any): Date | undefined => {
+      if (!value) return undefined;
+      if (value instanceof Date && !isNaN(value.getTime())) return value;
+      if (typeof value === 'string') {
+        const v = value.trim();
+        if (!v) return undefined;
+        let y: number;
+        let m: number;
+        let d: number;
+        const iso = /^(\d{4})-(\d{2})-(\d{2})/;
+        const dmy = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+        const ymd = /^(\d{4})(\d{2})(\d{2})$/;
+        let mRes = v.match(iso);
+        if (mRes) {
+          y = Number(mRes[1]);
+          m = Number(mRes[2]) - 1;
+          d = Number(mRes[3]);
+          const dt = new Date(y, m, d);
+          return isNaN(dt.getTime()) ? undefined : dt;
+        }
+        mRes = v.match(dmy);
+        if (mRes) {
+          d = Number(mRes[1]);
+          m = Number(mRes[2]) - 1;
+          y = Number(mRes[3]);
+          const dt = new Date(y, m, d);
+          return isNaN(dt.getTime()) ? undefined : dt;
+        }
+        mRes = v.match(ymd);
+        if (mRes) {
+          y = Number(mRes[1]);
+          m = Number(mRes[2]) - 1;
+          d = Number(mRes[3]);
+          const dt = new Date(y, m, d);
+          return isNaN(dt.getTime()) ? undefined : dt;
+        }
+        const dt = new Date(v);
+        return isNaN(dt.getTime()) ? undefined : dt;
+      }
+      return undefined;
+    };
+    let entityId: number | undefined;
+    const rawCnpj = typeof entityCnpj === 'string' && entityCnpj.trim()
+      ? entityCnpj
+      : typeof entityDoc === 'string' && entityDoc.trim()
+      ? entityDoc
+      : undefined;
+    if (rawCnpj) {
+      const doc = rawCnpj.replace(/\D+/g, '');
+      if (doc) {
+        const rows: any[] = await prisma.$queryRawUnsafe(
+          `SELECT "id" FROM "Entity" WHERE regexp_replace("cnpj", '\\D', '', 'g')='${doc}' LIMIT 1`
+        );
+        const eid = rows[0]?.id as number | undefined;
+        if (eid) entityId = eid;
+      }
+    }
+    if (!entityId && createdById) {
+      const u = await prisma.user.findUnique({ where: { id: createdById }, select: { lastEntityId: true } });
+      if (u?.lastEntityId) entityId = u.lastEntityId;
+    }
+    const normalizedItems = (Array.isArray(items) ? items : []).map((it: any) => {
+      const qty = Number(it.quantity || 1);
+      const price = Number(it.unitPrice || 0);
+      const disc = Number(it.discountPct || 0);
+      const lineTotal = qty * price * (1 - disc / 100);
+      return {
+        inventoryItemId: it.inventoryItemId ? Number(it.inventoryItemId) : undefined,
+        sku: it.sku || undefined,
+        name: String(it.name || it.productName || 'Produto'),
+        quantity: qty,
+        unit: it.unit || undefined,
+        unitPrice: price,
+        discountPct: disc,
+        width: it.width ? Number(it.width) : undefined,
+        length: it.length ? Number(it.length) : undefined,
+        grammage: it.grammage ? Number(it.grammage) : undefined,
+        diameter: it.diameter ? Number(it.diameter) : undefined,
+        tube: it.tube ? Number(it.tube) : undefined,
+        clientOrderNumber: it.clientOrderNumber || undefined,
+        clientOrderItemNumber: it.clientOrderItemNumber ? Number(it.clientOrderItemNumber) : undefined,
+        itemDeliveryDate: parseDate(it.itemDeliveryDate),
+        internalResin: !!it.internalResin,
+        externalResin: !!it.externalResin,
+        creases: it.creases || undefined,
+        lineTotal,
+      };
+    });
+    const subtotal = normalizedItems.reduce((acc: number, i: any) => acc + i.quantity * i.unitPrice, 0);
+    const discountTotal = normalizedItems.reduce((acc: number, i: any) => acc + (i.quantity * i.unitPrice * (i.discountPct || 0) / 100), 0);
+    const total = normalizedItems.reduce((acc: number, i: any) => acc + i.lineTotal, 0);
+    const code = `ORD-${Date.now()}`;
+    const created = await prisma.salesOrder.create({
+      data: {
+        code,
+        entityId,
+        customerName,
+        customerDoc: customerDoc || undefined,
+        triangularCustomerName: triangularCustomerName || undefined,
+        triangularCustomerDoc: triangularCustomerDoc || undefined,
+        paymentTerms: paymentTerms !== undefined && paymentTerms !== null ? String(paymentTerms) : undefined,
+        carrier: carrier || undefined,
+        deliveryDate: parseDate(deliveryDate),
+        notes: notes || undefined,
+        createdById: createdById,
+        subtotal,
+        discountTotal,
+        total,
+        items: { create: normalizedItems },
+      },
+      include: { items: true },
+    });
+    return NextResponse.json(created, { status: 201 });
+  } catch (err: any) {
+    console.error('Create order error:', err);
+    return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
+  }
 }

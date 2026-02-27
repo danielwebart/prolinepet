@@ -60,6 +60,16 @@ export default function AdminModulesPage() {
     }
   }, [selectedModuleId, modules]);
 
+  const generateCode = (text: string) => {
+    return text
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9\s]/g, '')
+      .trim()
+      .replace(/\s+/g, '_')
+      .toUpperCase();
+  };
+
   const createModule = async () => {
     const c = modCode.trim(); const n = modName.trim();
     if (!n || (!editingModule && !c)) { setErr('Informe Código e Nome do módulo'); return; }
@@ -141,6 +151,15 @@ export default function AdminModulesPage() {
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-medium">Módulos</h2>
             <div className="flex items-center gap-2">
+              <button 
+                onClick={() => { 
+                  setSelectedModuleId(null); 
+                  setPrograms([]); 
+                }} 
+                className="text-xs px-2 py-1 border rounded hover:bg-gray-50"
+              >
+                Novo módulo
+              </button>
               {selectedModuleId && (
                 <button
                   onClick={() => {
@@ -171,8 +190,25 @@ export default function AdminModulesPage() {
           </div>
           <div className="mt-4 space-y-2">
             <div className="text-sm font-medium">{editingModule ? 'Editar Módulo' : 'Cadastrar Módulo'}</div>
-            <input value={modCode} onChange={e=>setModCode(e.target.value)} readOnly={editingModule} placeholder="Código" className="w-full border rounded px-2 py-1 text-sm" />
-            <input value={modName} onChange={e=>setModName(e.target.value)} placeholder="Nome" className="w-full border rounded px-2 py-1 text-sm" />
+            <input 
+              value={modCode} 
+              readOnly 
+              disabled 
+              placeholder="Gerado automaticamente" 
+              className="w-full border rounded px-2 py-1 text-sm bg-gray-100 text-gray-500 cursor-not-allowed" 
+            />
+            <input 
+              value={modName} 
+              onChange={e => {
+                const val = e.target.value;
+                setModName(val);
+                if (!editingModule) {
+                  setModCode(generateCode(val));
+                }
+              }} 
+              placeholder="Nome" 
+              className="w-full border rounded px-2 py-1 text-sm" 
+            />
             <textarea value={modDesc} onChange={e=>setModDesc(e.target.value)} placeholder="Descrição (opcional)" className="w-full border rounded px-2 py-1 text-sm" />
             <div className="flex items-center gap-2">
               <input type="checkbox" checked={modShowDashboard} onChange={e => setModShowDashboard(e.target.checked)} id="modShowDashboard" />

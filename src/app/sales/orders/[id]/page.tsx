@@ -55,6 +55,19 @@ type SalesOrder = {
   lastTaxSimulation?: string | null;
   totalWithTax?: number;
   totalInvoiced?: number;
+  erpOrderNumber?: string | null;
+  triangularCustomerName?: string | null;
+  triangularCustomerDoc?: string | null;
+};
+
+type SalesOrderInvoice = {
+  id: number;
+  invoiceNumber: string;
+  issueDate: string;
+  totalValue: number;
+  totalWeight: number;
+  danfeFileName?: string | null;
+  xmlFileName?: string | null;
 };
 
 const ICON_BTN = "inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700";
@@ -230,7 +243,7 @@ export default function SalesOrderMaintenancePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showFeaturesFor, setShowFeaturesFor] = useState<number | null>(null);
-  const [hdrDraft, setHdrDraft] = useState<{ paymentTerms?: string; deliveryDate?: string; customerName?: string; customerDoc?: string }>({});
+  const [hdrDraft, setHdrDraft] = useState<{ paymentTerms?: string; deliveryDate?: string; customerName?: string; customerDoc?: string; triangularCustomerName?: string; triangularCustomerDoc?: string }>({});
   const [isHeaderEditing, setIsHeaderEditing] = useState(false);
   const [addingItems, setAddingItems] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -242,6 +255,26 @@ export default function SalesOrderMaintenancePage() {
   const [integrating, setIntegrating] = useState(false);
   const [checkingEdit, setCheckingEdit] = useState(false);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
+
+  // Billing History
+  const [showBilling, setShowBilling] = useState(false);
+  const [invoices, setInvoices] = useState<SalesOrderInvoice[]>([]);
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
+
+  const loadInvoices = async () => {
+    setLoadingInvoices(true);
+    try {
+      const res = await fetch(`/api/sales/orders/${id}/invoices`);
+      if (res.ok) {
+        const data = await res.json();
+        setInvoices(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingInvoices(false);
+    }
+  };
 
   const handleSimulateTaxes = async () => {
     if (!order) return;
@@ -349,23 +382,60 @@ export default function SalesOrderMaintenancePage() {
 
   useEffect(() => {
     const load = async () => {
-      setLoading(true); setError(null);
+      if (!Number.isFinite(id)) {
+        setError('ID do pedido inválido na URL');
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
+
       try {
-        const res = await fetch(`/api/sales/orders/${id}`, { cache: 'no-store' });
+        const res = await fetch(`/api/sales/orders/${id}`, { cache: 'no-store', signal: controller.signal });
+
+        if (!res.ok) {
+          let msg = `Falha ao carregar pedido (HTTP ${res.status})`;
+          try {
+            const body = await res.json();
+            if (body && typeof body.error === 'string') {
+              msg = body.error;
+            }
+          } catch {
+          }
+          setError(msg);
+          setOrder(null);
+          setOrderItems([]);
+          return;
+        }
+
         const data: SalesOrder = await res.json();
         setOrder(data);
         setOrderItems(data.items || []);
         setHdrDraft({
           paymentTerms: data.paymentTerms || '',
-          deliveryDate: data.deliveryDate ? new Date(data.deliveryDate).toISOString().slice(0,10) : '',
+          deliveryDate: data.deliveryDate ? new Date(data.deliveryDate).toISOString().slice(0, 10) : '',
           customerName: data.customerName || '',
-          customerDoc: data.customerDoc || ''
+          customerDoc: data.customerDoc || '',
+          triangularCustomerName: data.triangularCustomerName || '',
+          triangularCustomerDoc: data.triangularCustomerDoc || ''
         });
       } catch (e: any) {
-        setError(e?.message || String(e));
-      } finally { setLoading(false); }
+        if (e?.name === 'AbortError') {
+          setError('Tempo limite ao carregar o pedido. Tente novamente.');
+        } else {
+          setError(e?.message || String(e));
+        }
+      } finally {
+        clearTimeout(timeout);
+        setLoading(false);
+      }
     };
-    if (Number.isFinite(id)) load();
+
+    load();
   }, [id]);
 
   const fmtCurrency = (n: number | undefined) => (n ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -389,8 +459,27 @@ export default function SalesOrderMaintenancePage() {
     return 0;
   };
 
-  const saveHeader = async (partial: { paymentTerms?: string; deliveryDate?: string; customerName?: string; customerDoc?: string }) => {
+  const saveHeader = async (partial: { paymentTerms?: string; deliveryDate?: string; customerName?: string; customerDoc?: string; triangularCustomerName?: string; triangularCustomerDoc?: string }) => {
     if (!order) return;
+
+    // Validate items: Sum of creases vs Width
+    for (let i = 0; i < orderItems.length; i++) {
+      const it = orderItems[i];
+      const w = it.width || 0;
+      if (w > 0) {
+        const creases = it.creases || {};
+        let sum = 0;
+        for (let k = 1; k <= 8; k++) {
+          sum += (Number(creases[k]) || 0);
+        }
+        
+        if (sum > w) {
+          alert(`A soma dos vincos está maior que a largura informada no item número ${i + 1}`);
+          return;
+        }
+      }
+    }
+
     try {
       const res = await fetch(`/api/sales/orders/${order.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(partial) });
       if (!res.ok) throw new Error('Falha ao salvar cabeçalho');
@@ -400,7 +489,9 @@ export default function SalesOrderMaintenancePage() {
         paymentTerms: updated.paymentTerms || '',
         deliveryDate: updated.deliveryDate ? new Date(updated.deliveryDate).toISOString().slice(0,10) : '',
         customerName: updated.customerName || '',
-        customerDoc: updated.customerDoc || ''
+        customerDoc: updated.customerDoc || '',
+        triangularCustomerName: updated.triangularCustomerName || '',
+        triangularCustomerDoc: updated.triangularCustomerDoc || ''
       });
       setIsHeaderEditing(false);
     } catch (e: any) { alert(e?.message || String(e)); }
@@ -476,6 +567,10 @@ export default function SalesOrderMaintenancePage() {
                     <div className="font-mono mt-1">{order.code}</div>
                   </div>
                   <div>
+                    <span className="text-gray-600">Pedido ERP</span>
+                    <div className="font-mono mt-1 text-blue-600">{order.erpOrderNumber || '-'}</div>
+                  </div>
+                  <div>
                     <span className="text-gray-600">Data</span>
                     <div className="mt-1">{new Date(order.orderDate).toLocaleDateString('pt-BR')}</div>
                   </div>
@@ -503,7 +598,7 @@ export default function SalesOrderMaintenancePage() {
                         value={hdrDraft.customerName ?? ''}
                         onChange={(val) => setHdrDraft((d) => ({ ...d, customerName: val }))}
                         onSelectObj={(item) => {
-                           setHdrDraft((d) => ({ ...d, customerName: item.name, customerDoc: item.document }));
+                           setHdrDraft((d) => ({ ...d, customerName: item.name, customerDoc: item.doc }));
                         }}
                         fetchUrl={(q) => `/api/base/clients?q=${q}`}
                         placeholder="Pesquise por nome ou documento"
@@ -511,7 +606,7 @@ export default function SalesOrderMaintenancePage() {
                         renderOption={(item) => (
                           <div>
                             <div className="font-medium">{item.name}</div>
-                            <div className="text-xs text-gray-500">{item.document}</div>
+                            <div className="text-xs text-gray-500">{item.doc}</div>
                           </div>
                         )}
                       />
@@ -539,6 +634,25 @@ export default function SalesOrderMaintenancePage() {
                   <div className="md:col-span-3">
                     <span className="text-gray-600">Entrega</span>
                     <input type="date" className="mt-1 w-full px-2 py-1 border rounded" value={hdrDraft.deliveryDate ?? ''} onChange={(e) => setHdrDraft((d) => ({ ...d, deliveryDate: e.target.value }))} disabled={!isHeaderEditing} />
+                  </div>
+                  <div className={`md:col-span-6 ${!isHeaderEditing ? "opacity-75 pointer-events-none" : ""}`}>
+                     <AsyncSelect
+                        label="Cliente Remessa Triangular"
+                        value={hdrDraft.triangularCustomerName ?? ''}
+                        onChange={(val) => setHdrDraft((d) => ({ ...d, triangularCustomerName: val }))}
+                        onSelectObj={(item) => {
+                           setHdrDraft((d) => ({ ...d, triangularCustomerName: item.name, triangularCustomerDoc: item.doc }));
+                        }}
+                        fetchUrl={(q) => `/api/base/clients?q=${q}`}
+                        placeholder="Pesquise por nome ou documento"
+                        getLabel={(item) => item.name}
+                        renderOption={(item) => (
+                          <div>
+                            <div className="font-medium">{item.name}</div>
+                            <div className="text-xs text-gray-500">{item.doc}</div>
+                          </div>
+                        )}
+                      />
                   </div>
                 </div>
 
@@ -571,7 +685,7 @@ export default function SalesOrderMaintenancePage() {
                   {simulating ? 'Simulando...' : 'Simular Impostos'}
                 </button>
 
-                <button className={`${ICON_BTN} ${integrating || !isEditableStatus(order?.status) ? 'opacity-50 cursor-not-allowed' : ''}`} title="Enviar para ERP" aria-label="Enviar para ERP" disabled={integrating || !isEditableStatus(order?.status)} onClick={async () => {
+                <button className={`${ICON_BTN} ${integrating || !isEditableStatus(order?.status) || isHeaderEditing ? 'opacity-50 cursor-not-allowed' : ''}`} title="Enviar para ERP" aria-label="Enviar para ERP" disabled={integrating || !isEditableStatus(order?.status) || isHeaderEditing} style={{ opacity: integrating || !isEditableStatus(order?.status) || isHeaderEditing ? 0.5 : 1, pointerEvents: integrating || !isEditableStatus(order?.status) || isHeaderEditing ? 'none' : 'auto' }} onClick={async () => {
                   if (!order) return;
                   if (!confirm('Confirma enviar este pedido para o ERP?')) return;
                   setIntegrating(true);
@@ -609,15 +723,15 @@ export default function SalesOrderMaintenancePage() {
                       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                   )}
                 </button>
-                <button className={`${ICON_BTN} ${!isDeletableStatus(order?.status) ? 'opacity-50 cursor-not-allowed' : ''}`} title="Excluir" aria-label="Excluir" disabled={!isDeletableStatus(order?.status)} onClick={async () => { if (!order) return; if (!confirm('Confirma excluir este pedido?')) return; const r = await fetch(`/api/sales/orders/${order.id}`, { method: 'DELETE' }); if (r.ok) router.push('/sales/orders'); }}>
+                <button className={`${ICON_BTN} ${!isDeletableStatus(order?.status) || isHeaderEditing ? 'opacity-50 cursor-not-allowed' : ''}`} title="Excluir" aria-label="Excluir" disabled={!isDeletableStatus(order?.status) || isHeaderEditing} style={{ opacity: !isDeletableStatus(order?.status) || isHeaderEditing ? 0.5 : 1, pointerEvents: !isDeletableStatus(order?.status) || isHeaderEditing ? 'none' : 'auto' }} onClick={async () => { if (!order) return; if (!confirm('Confirma excluir este pedido?')) return; const r = await fetch(`/api/sales/orders/${order.id}`, { method: 'DELETE' }); if (r.ok) router.push('/sales/orders'); }}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 </button>
                 {isHeaderEditing ? (
                   <>
-                    <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-green-600" title="Salvar" aria-label="Salvar" onClick={() => saveHeader({ paymentTerms: hdrDraft.paymentTerms, deliveryDate: hdrDraft.deliveryDate, customerName: hdrDraft.customerName, customerDoc: hdrDraft.customerDoc })}>
+                    <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-green-600" title="Salvar" aria-label="Salvar" onClick={() => saveHeader({ paymentTerms: hdrDraft.paymentTerms, deliveryDate: hdrDraft.deliveryDate, customerName: hdrDraft.customerName, customerDoc: hdrDraft.customerDoc, triangularCustomerName: hdrDraft.triangularCustomerName, triangularCustomerDoc: hdrDraft.triangularCustomerDoc })}>
                       <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17Z"/></svg>
                     </button>
-                    <button className="inline-flex items-center justify-center w-8 h-8 bg-red-50 border border-red-200 rounded shadow-sm hover:bg-red-100 text-red-600" title="Cancelar" aria-label="Cancelar" onClick={() => { setIsHeaderEditing(false); setHdrDraft({ paymentTerms: order.paymentTerms || '', deliveryDate: order.deliveryDate ? new Date(order.deliveryDate).toISOString().slice(0,10) : '', customerName: order.customerName || '', customerDoc: order.customerDoc || '' }); }}>
+                    <button className="inline-flex items-center justify-center w-8 h-8 bg-red-50 border border-red-200 rounded shadow-sm hover:bg-red-100 text-red-600" title="Cancelar" aria-label="Cancelar" onClick={() => { setIsHeaderEditing(false); setHdrDraft({ paymentTerms: order.paymentTerms || '', deliveryDate: order.deliveryDate ? new Date(order.deliveryDate).toISOString().slice(0,10) : '', customerName: order.customerName || '', customerDoc: order.customerDoc || '', triangularCustomerName: order.triangularCustomerName || '', triangularCustomerDoc: order.triangularCustomerDoc || '' }); }}>
                       <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.41 4.29 19.71 2.88 18.3 9.17 12 2.88 5.71 4.29 4.29 10.59 10.59 16.89 4.29l1.41 1.42Z"/></svg>
                     </button>
                   </>
@@ -746,11 +860,89 @@ export default function SalesOrderMaintenancePage() {
             )}
           </div>
 
+          {/* Histórico de Faturamento */}
+          <div className="border rounded bg-white">
+            <div className="px-3 py-2 border-b flex items-center gap-2">
+              <span className="text-sm text-gray-700">Histórico de Faturamento</span>
+              <button
+                className={ICON_BTN}
+                title={showBilling ? 'Ocultar faturamento' : 'Mostrar faturamento'}
+                aria-label={showBilling ? 'Ocultar faturamento' : 'Mostrar faturamento'}
+                onClick={() => {
+                  const next = !showBilling;
+                  setShowBilling(next);
+                  if (next) loadInvoices();
+                }}
+              >
+                {showBilling ? (
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7 14l5-5 5 5H7z"/></svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7 10l5 5 5-5H7z"/></svg>
+                )}
+              </button>
+            </div>
+            {showBilling && (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Nr Nota Fiscal</th>
+                      <th className="px-3 py-2 text-left">Data Emissão</th>
+                      <th className="px-3 py-2 text-right">Vlr Tot Nota R$</th>
+                      <th className="px-3 py-2 text-right">Peso Tot Nota Kg</th>
+                      <th className="px-3 py-2 text-center">Opções</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loadingInvoices && <tr><td colSpan={5} className="px-3 py-4 text-center text-gray-500">Carregando...</td></tr>}
+                    {!loadingInvoices && invoices.length === 0 && <tr><td colSpan={5} className="px-3 py-4 text-center text-gray-500">Nenhum faturamento registrado.</td></tr>}
+                    {!loadingInvoices && invoices.map((inv) => (
+                      <tr key={inv.id} className="border-t hover:bg-gray-50">
+                        <td className="px-3 py-2">{inv.invoiceNumber}</td>
+                        <td className="px-3 py-2">{new Date(inv.issueDate).toLocaleDateString('pt-BR')}</td>
+                        <td className="px-3 py-2 text-right">{fmtCurrency(inv.totalValue)}</td>
+                        <td className="px-3 py-2 text-right">{fmtNumber(inv.totalWeight)}</td>
+                        <td className="px-3 py-2 text-center">
+                           <div className="flex justify-center gap-2">
+                             {inv.danfeFileName && (
+                               <a 
+                                 href={`/api/sales/orders/${id}/invoices/${inv.id}/download?type=danfe`} 
+                                 target="_blank" 
+                                 className="px-2 py-1 text-xs border rounded bg-white hover:bg-gray-100 text-blue-600"
+                               >
+                                 Baixar DANFE
+                               </a>
+                             )}
+                             {inv.xmlFileName && (
+                               <a 
+                                 href={`/api/sales/orders/${id}/invoices/${inv.id}/download?type=xml`} 
+                                 target="_blank" 
+                                 className="px-2 py-1 text-xs border rounded bg-white hover:bg-gray-100 text-green-600"
+                               >
+                                 Baixar XML
+                               </a>
+                             )}
+                           </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
           {/* Seção Itens + grupos por família */}
           <div className="border rounded bg-white">
             <div className="px-3 py-2 border-b flex items-center gap-2">
               <span className="text-sm text-gray-700">Itens</span>
-              <button className={`ml-auto px-2 py-1 text-xs border rounded bg-white hover:bg-gray-100 ${!isEditableStatus(order?.status) ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={!isEditableStatus(order?.status)} onClick={() => { setAddingItems(true); searchClientItems(''); }}>Adicionar itens</button>
+              <button 
+                className={`ml-auto px-2 py-1 text-xs border rounded bg-white hover:bg-gray-100 ${!isHeaderEditing ? 'opacity-50 cursor-not-allowed' : ''}`} 
+                disabled={!isHeaderEditing} 
+                onClick={() => { setAddingItems(true); searchClientItems(''); }}
+              >
+                Adicionar itens
+              </button>
             </div>
             {addingItems && (
               <div className="p-3 border-b">
@@ -761,14 +953,14 @@ export default function SalesOrderMaintenancePage() {
                 <div className="mt-2">
                   {searchLoading && <div className="text-xs text-gray-500">Buscando…</div>}
                   {!searchLoading && searchResults.length === 0 && <div className="text-xs text-gray-500">Nenhum item vinculado ao cliente encontrado.</div>}
-                  <ul className="divide-y">
+                  <ul className="divide-y max-h-60 overflow-auto">
                     {searchResults.map((it) => (
-                      <li key={it.id} className="py-2 flex items-center gap-3">
+                      <li key={it.id} className="py-2 flex items-center gap-3 cursor-pointer hover:bg-gray-50 px-2 rounded" onClick={() => addItemToOrder(it)}>
                         <div className="flex-1">
-                          <div className="text-sm">{it.name}</div>
+                          <div className="text-sm font-medium">{it.name}</div>
                           <div className="text-xs text-gray-600">{it.sku || '-'} • {it.unit || '-'}</div>
                         </div>
-                        <button className="px-2 py-1 text-xs border rounded bg-white hover:bg-gray-100" onClick={() => addItemToOrder(it)}>Adicionar</button>
+                        <button className="px-2 py-1 text-xs border rounded bg-white hover:bg-gray-100" onClick={(e) => { e.stopPropagation(); addItemToOrder(it); }}>Adicionar</button>
                       </li>
                     ))}
                   </ul>
@@ -806,6 +998,7 @@ export default function SalesOrderMaintenancePage() {
                            key={it.id}
                            item={it}
                            isOrderEditable={isHeaderEditing}
+                           canDelete={isDeletableStatus(order?.status) && !isHeaderEditing}
                            onPreviewUpdate={(updated) => {
                              setOrderItems(prev => prev.map(i => i.id === updated.id ? updated : i));
                            }}

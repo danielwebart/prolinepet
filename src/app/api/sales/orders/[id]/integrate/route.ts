@@ -101,26 +101,38 @@ export async function POST(request: Request, { params }: { params: { id: string 
           id: order.id,
           code: order.code,
           customerDoc: customerDocRaw.replace(/\D/g, ''),
+          triangularCustomerDoc: order.triangularCustomerDoc ? order.triangularCustomerDoc.replace(/\D/g, '') : "",
           discountOrd: "0",
           deliveryDate: order.deliveryDate ? order.deliveryDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
           observ: order.notes || "Integração via Portal",
           entityDoc: entityDoc
         },
-        orderitem: order.items.map(item => ({
-          orderId: order.id,
-          sku: item.sku || item.inventoryItem?.sku || "",
-          quantity: item.quantity,
-          diameter: item.diameter || 0,
-          grammage: item.grammage || 0,
-          tube: item.tube || 0,
-          width: item.width || 0,
-          length: item.length || 0,
-          clientOrderNumber: item.clientOrderNumber || "",
-          clientOrderItemNumber: item.clientOrderItemNumber || 0,
-          deliveryDate: item.itemDeliveryDate ? item.itemDeliveryDate.toISOString().split('T')[0] : "",
-          externalResin: item.externalResin ? "S" : "N",
-          internalResin: item.internalResin ? "S" : "N"
-        }))
+        orderitem: order.items.map(item => {
+          const creases = item.creases as Record<string, number> | null;
+          return {
+            orderId: order.id,
+            sku: item.sku || item.inventoryItem?.sku || "",
+            quantity: item.quantity,
+            diameter: item.diameter || 0,
+            grammage: item.grammage || 0,
+            tube: item.tube || 0,
+            width: item.width || 0,
+            length: item.length || 0,
+            crease1: creases?.['1'] || 0,
+            crease2: creases?.['2'] || 0,
+            crease3: creases?.['3'] || 0,
+            crease4: creases?.['4'] || 0,
+            crease5: creases?.['5'] || 0,
+            crease6: creases?.['6'] || 0,
+            crease7: creases?.['7'] || 0,
+            crease8: creases?.['8'] || 0,
+            clientOrderNumber: item.clientOrderNumber || "",
+            clientOrderItemNumber: item.clientOrderItemNumber || 0,
+            deliveryDate: item.itemDeliveryDate ? item.itemDeliveryDate.toISOString().split('T')[0] : "",
+            externalResin: item.externalResin ? "S" : "N",
+            internalResin: item.internalResin ? "S" : "N"
+          };
+        })
       }
     };
 
@@ -152,9 +164,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
     let messages: string[] = [];
     let hasError = false;
     let hasInfo = false;
+    let erpOrderNumber: string | null = null;
 
     const processItem = (item: any) => {
         if (item && typeof item === 'object') {
+             if (item.ErrorNumber) {
+                 erpOrderNumber = String(item.ErrorNumber);
+             }
+
              if (item.ErrorSubType) {
                  const msg = `${item.ErrorSubType}: ${item.ErrorDescription || ''}`;
                  messages.push(msg);
@@ -185,17 +202,23 @@ export async function POST(request: Request, { params }: { params: { id: string 
     // Logic modified: If status changes, create new history. If status is same, update latest history.
     if (resource !== 'checkPedidoExiste') {
       if (newStatus !== order.status) {
-          await prisma.salesOrder.update({
-              where: { id: order.id },
-              data: {
-                  status: newStatus,
-                  statusHistory: {
-                      create: {
-                          status: newStatus,
-                          messages: messages
-                      }
+          const updateData: any = {
+              status: newStatus,
+              statusHistory: {
+                  create: {
+                      status: newStatus,
+                      messages: messages
                   }
               }
+          };
+
+          if (newStatus === 'Integrado' && erpOrderNumber) {
+              updateData.erpOrderNumber = erpOrderNumber;
+          }
+
+          await prisma.salesOrder.update({
+              where: { id: order.id },
+              data: updateData
           });
       } else {
           // Status unchanged
