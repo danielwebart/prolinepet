@@ -265,8 +265,8 @@ export const SalesOrderItemRow = ({
                 ) : '-'}</td>
                 <td className="p-2">{showWidthLengthGram ? (
                     <FormattedIntInput 
-                        className={`w-24 px-2 py-1 border rounded ${!canEdit ? disabledClass : ''}`}
-                        disabled={!canEdit}
+                        className={`w-24 px-2 py-1 border rounded ${disabledClass}`}
+                        disabled
                         value={localItem.grammage} 
                         onChange={(val) => handleChange('grammage', val)} 
                     />

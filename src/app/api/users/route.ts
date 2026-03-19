@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 // Rebuild trigger: Fix webpack runtime error
 import { prisma } from '../../../lib/prisma';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 function normalizeDoc(doc: string): string {
   return (doc || '').replace(/\D+/g, '');
@@ -91,6 +91,55 @@ export async function POST(request: Request) {
     select: { id: true, name: true, email: true, createdAt: true, updatedAt: true, salesRepAdmin: true, isSalesAdmin: true, erpIntegrationMode: true } 
   });
   return NextResponse.json(created);
+}
+
+export async function PATCH(request: Request) {
+  try {
+    await ensureUserDocColumn();
+    const body = await request.json().catch(() => ({} as any));
+    const id = Number(body?.id);
+    if (!id || Number.isNaN(id)) return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+
+    const update: any = {};
+    if (body.name !== undefined) update.name = String(body.name);
+    if (body.email !== undefined) update.email = body.email == null ? null : String(body.email);
+    if (body.erpIntegrationMode !== undefined) update.erpIntegrationMode = String(body.erpIntegrationMode);
+    if (body.salesRepAdmin !== undefined) update.salesRepAdmin = Boolean(body.salesRepAdmin);
+    if (body.isSalesAdmin !== undefined) update.isSalesAdmin = Boolean(body.isSalesAdmin);
+    if (body.twoFactorRequired !== undefined) update.twoFactorRequired = Boolean(body.twoFactorRequired);
+    if (body.password !== undefined && String(body.password).length > 0) {
+      update.password = await bcrypt.hash(String(body.password), 10);
+    }
+
+    const updated = await prisma.user.update({
+      where: { id },
+      data: update,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        createdAt: true,
+        updatedAt: true,
+        salesRepAdmin: true,
+        isSalesAdmin: true,
+        twoFactorRequired: true,
+        erpIntegrationMode: true,
+      },
+    });
+
+    if (body.doc !== undefined) {
+      const doc = normalizeDoc(String(body.doc || '')) || null;
+      const docSql = doc ? `'${String(doc).replace(/'/g, "''")}'` : 'NULL';
+      await prisma.$executeRawUnsafe(`UPDATE "User" SET doc=${docSql} WHERE id=${id}`);
+    }
+
+    const rows: any[] = await prisma.$queryRawUnsafe(
+      `SELECT id, name, email, doc, "salesRepAdmin", "isSalesAdmin", "twoFactorRequired", "erpIntegrationMode", "createdAt", "updatedAt", ("twoFactorSecret" IS NOT NULL) as "hasTwoFactorSecret" FROM "User" WHERE id=${id} LIMIT 1`
+    );
+    return NextResponse.json(rows[0] ?? updated);
+  } catch (err: any) {
+    return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
+  }
 }
 
 export async function DELETE(request: Request) {

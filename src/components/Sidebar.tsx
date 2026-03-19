@@ -1,9 +1,8 @@
 "use client";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 
-type NavItem = { href: string; label: string; icon: React.ReactNode };
 type Program = { code: string; name: string };
 type ModulePerm = { code: string; name: string; programs: Program[] };
 type Permissions = { activeEntityId: number | null; entities: { id: number; name: string }[]; modules: ModulePerm[] } | null;
@@ -92,6 +91,14 @@ function programHref(code: string): string | null {
     case 'SAC_COMPLAINT_SEARCH': return '/sac/complaints/search';
     case 'SAC_COMPLAINT_CREATE': return '/sac/complaints/new';
     case 'SAC_STANDARD_OCCURRENCE': return '/sac/occurrences/standard';
+    // Gestão FinTI
+    case 'DESPESAS': return '/admin/modules/gestao-finti/despesas';
+    case 'PAGAMENTOS': return '/admin/modules/gestao-finti/pagamentos';
+    case 'ANALISE': return '/admin/modules/gestao-finti/analise';
+    case 'ORCAMENTOS': return '/admin/modules/gestao-finti/orcamentos';
+    case 'ATIVOS': return '/admin/modules/gestao-finti/ativos';
+    case 'CONTRATOS': return '/admin/modules/gestao-finti/contratos';
+    case 'CONFIGURACOES': return '/admin/modules/gestao-finti/configuracoes';
     default: return null;
   }
 }
@@ -117,7 +124,7 @@ export default function Sidebar({ perms, mobileOpen, setMobileOpen, pathname }: 
     if (mobileOpen && setMobileOpen) {
       setMobileOpen(false);
     }
-  }, [pathname]);
+  }, [pathname, mobileOpen, setMobileOpen]);
 
   // Expand automatically based on route
   useEffect(() => {
@@ -227,6 +234,14 @@ export default function Sidebar({ perms, mobileOpen, setMobileOpen, pathname }: 
                         case 'COMMERCIAL_FAMILY': return Icon.settings;
                         case 'ITEM_MAINTENANCE': return Icon.inventory;
                         case 'SAC_STANDARD_OCCURRENCE': return Icon.settings;
+                        // Gestão FinTI
+                        case 'DESPESAS': return Icon.reports;
+                        case 'PAGAMENTOS': return Icon.reports;
+                        case 'ANALISE': return Icon.dashboard;
+                        case 'ORCAMENTOS': return Icon.reports;
+                        case 'ATIVOS': return Icon.assets;
+                        case 'CONTRATOS': return Icon.reports;
+                        case 'CONFIGURACOES': return Icon.settings;
                         default: return null;
                       }
                     })();

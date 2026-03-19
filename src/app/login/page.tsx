@@ -335,7 +335,7 @@ function LoginForm() {
                       setForgotMsg('Código enviado para o seu e-mail.');
                       setForgotStep(2);
                     }
-                  } catch (err) {
+                  } catch {
                     setForgotError('Erro de rede. Tente novamente.');
                   } finally {
                     setForgotLoading(false);
@@ -392,7 +392,7 @@ function LoginForm() {
                         setForgotMsg(null);
                       }, 1000);
                     }
-                  } catch (err) {
+                  } catch {
                     setForgotError('Erro de rede. Tente novamente.');
                   } finally {
                     setForgotLoading(false);
@@ -500,7 +500,7 @@ function LoginForm() {
                         setForgotMsg(null);
                       }, 2000);
                     }
-                  } catch (err) {
+                  } catch {
                     setForgotError('Erro de rede. Tente novamente.');
                   } finally {
                     setForgotLoading(false);

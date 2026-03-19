@@ -8,8 +8,78 @@ export async function POST(request: Request, { params }: { params: { id: string 
     if (!Number.isFinite(clientId) || clientId <= 0) return NextResponse.json({ error: 'clientId inválido' }, { status: 400 });
 
     const rawBody = await request.json();
-    const items = Array.isArray(rawBody) ? rawBody : [rawBody];
+    const isArrayPayload = Array.isArray(rawBody);
+    const items = isArrayPayload ? rawBody : [rawBody];
     const results: any[] = [];
+
+    if (isArrayPayload) {
+      const withId: any[] = [];
+      const withSku: { body: any; sku: string }[] = [];
+      for (const body of items) {
+        const inventoryItemId = Number(body?.inventoryItemId);
+        if (Number.isFinite(inventoryItemId) && inventoryItemId > 0) {
+          withId.push({ body, inventoryItemId });
+          continue;
+        }
+        const sku = String(body?.itemCode || body?.sku || '').trim();
+        if (!sku) return NextResponse.json({ error: 'inventoryItemId ou sku/itemCode é obrigatório' }, { status: 400 });
+        withSku.push({ body, sku });
+      }
+
+      const skuList = Array.from(new Set(withSku.map((x) => x.sku)));
+      const skuMap = new Map<string, number>();
+      if (skuList.length) {
+        const found = await prisma.inventoryItem.findMany({
+          where: { sku: { in: skuList } },
+          select: { id: true, sku: true },
+        });
+        for (const it of found) {
+          if (it.sku) skuMap.set(it.sku, it.id);
+        }
+      }
+
+      const normalized = new Map<number, any>();
+      for (const { body, inventoryItemId } of withId) normalized.set(inventoryItemId, body);
+      for (const { body, sku } of withSku) {
+        const invId = skuMap.get(sku);
+        if (!invId) return NextResponse.json({ error: `Item com código '${sku}' não encontrado` }, { status: 400 });
+        normalized.set(invId, body);
+      }
+
+      const keepIds = Array.from(normalized.keys());
+      const unlinkedCount = await prisma.$transaction(async (tx) => {
+        for (const [inventoryItemId, body] of Array.from(normalized.entries())) {
+          const unit = body.unit ? String(body.unit) : null;
+          const unitPrice = Number(body.unitPrice ?? 0);
+          const allowed = body.allowed === false ? false : true;
+
+          const itemUpdate: any = {};
+          if (body.width !== undefined) itemUpdate.width = Number(body.width);
+          if (body.length !== undefined) itemUpdate.length = Number(body.length);
+          if (body.grammage !== undefined) itemUpdate.grammage = Number(body.grammage);
+          if (Object.keys(itemUpdate).length > 0) {
+            await tx.inventoryItem.update({ where: { id: inventoryItemId }, data: itemUpdate });
+          }
+
+          const row = await tx.clientItem.upsert({
+            where: { clientId_inventoryItemId: { clientId, inventoryItemId } },
+            update: { unit, unitPrice, allowed },
+            create: { clientId, inventoryItemId, unit, unitPrice, allowed },
+          });
+          results.push({ ...row, success: true });
+        }
+
+        const del = keepIds.length
+          ? await tx.clientItem.deleteMany({ where: { clientId, inventoryItemId: { notIn: keepIds } } })
+          : await tx.clientItem.deleteMany({ where: { clientId } });
+        return del.count;
+      });
+
+      if (results.length) (results[0] as any).unlinkedCount = unlinkedCount;
+      else results.push({ success: true, unlinkedCount });
+
+      return NextResponse.json(results, { status: 200 });
+    }
 
     for (const body of items) {
       try {
@@ -85,5 +155,3 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
   }
 }
-
-

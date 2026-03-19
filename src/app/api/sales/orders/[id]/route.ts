@@ -8,8 +8,25 @@ function normalizeDoc(doc: string): string {
   return (doc || '').replace(/\D+/g, '');
 }
 
+async function ensureCommercialFamilyColumns() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "CommercialFamily" (
+      "id" SERIAL PRIMARY KEY,
+      "description" TEXT NOT NULL,
+      "erpCode" TEXT,
+      "priceBy" TEXT DEFAULT 'UNIT',
+      "createdAt" TIMESTAMP DEFAULT NOW(),
+      "updatedAt" TIMESTAMP
+    );
+  `);
+  await prisma.$executeRawUnsafe('ALTER TABLE "CommercialFamily" ADD COLUMN IF NOT EXISTS "erpCode" TEXT');
+  await prisma.$executeRawUnsafe('ALTER TABLE "CommercialFamily" ADD COLUMN IF NOT EXISTS "priceBy" TEXT DEFAULT \'UNIT\'');
+  await prisma.$executeRawUnsafe('UPDATE "CommercialFamily" SET "priceBy"=\'UNIT\' WHERE "priceBy" IS NULL');
+}
+
 async function shouldRestrictToLinkedClients(userId: number): Promise<boolean> {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { salesRepAdmin: true } });
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { salesRepAdmin: true, isSalesAdmin: true } });
+  if (user?.isSalesAdmin) return false;
   if (user?.salesRepAdmin) return true;
   const hasLinks = Boolean(await prisma.userClientRep.findFirst({ where: { userId }, select: { id: true } }));
   return hasLinks;
@@ -26,6 +43,7 @@ async function canAccessOrderByCustomerDoc(userId: number, customerDoc?: string 
 }
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
+  await ensureCommercialFamilyColumns();
   const session = await getServerSession(authOptions);
   const userId = session?.user ? Number((session.user as any).id) : null;
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -59,6 +77,7 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   try {
+    await ensureCommercialFamilyColumns();
     const session = await getServerSession(authOptions);
     const userId = session?.user ? Number((session.user as any).id) : null;
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -93,6 +112,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     }
     if (typeof body.customerDoc === 'string') {
       allowed.customerDoc = String(body.customerDoc);
+    }
+    if (typeof body.clientId === 'number') {
+      allowed.clientId = Number.isFinite(body.clientId) ? Math.trunc(body.clientId) : null;
     }
     if (typeof body.triangularCustomerName === 'string') {
       allowed.triangularCustomerName = String(body.triangularCustomerName);

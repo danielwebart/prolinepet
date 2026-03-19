@@ -7,7 +7,8 @@ export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     const uid = session?.user ? Number((session.user as any).id) : undefined;
-    const activeEntityId = (session as any)?.activeEntityId ?? null;
+    let activeEntityId = (session as any)?.entityId ?? (session as any)?.activeEntityId ?? null;
+    if (activeEntityId) activeEntityId = Number(activeEntityId);
     if (!uid) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
 
     // Entidades do usuário (usar Prisma para evitar incompatibilidades de SQL)
@@ -18,7 +19,7 @@ export async function GET() {
     });
 
     // Módulos e programas permitidos na entidade ativa
-    let modules: any[] = [];
+    const modules: any[] = [];
     if (activeEntityId) {
       // 1. Buscar módulos ativos vinculados à entidade
       // Query raw original: SELECT m.* FROM Module m JOIN EntityModule em ...

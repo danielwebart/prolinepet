@@ -3,8 +3,13 @@ import { prisma } from '../../../../../../lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../../../lib/auth';
 
+async function ensureClientPaymentTermColumn() {
+  await prisma.$executeRawUnsafe('ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "paymentTermId" INTEGER');
+}
+
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
+    await ensureClientPaymentTermColumn();
     const session = await getServerSession(authOptions);
     const userId = session?.user ? Number((session.user as any).id) : null;
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -82,7 +87,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       if (body && body.resource) {
         resource = body.resource;
       }
-    } catch (e) {
+    } catch {
       // Body might be empty, ignore
     }
 
@@ -161,10 +166,18 @@ export async function POST(request: Request, { params }: { params: { id: string 
     console.log('Integration Result:', JSON.stringify(data, null, 2));
 
     // Analyze Response
-    let messages: string[] = [];
+    const messages: string[] = [];
     let hasError = false;
     let hasInfo = false;
     let erpOrderNumber: string | null = null;
+
+    const translateErrorSubType = (v: any): string => {
+      const s = String(v || '').trim().toUpperCase();
+      if (s === 'ERROR') return 'ERRO';
+      if (s === 'INFORMATION' || s === 'INFO') return 'INFORMAÇÃO';
+      if (s === 'WARNING' || s === 'WARN') return 'AVISO';
+      return s || '-';
+    };
 
     const processItem = (item: any) => {
         if (item && typeof item === 'object') {
@@ -173,10 +186,12 @@ export async function POST(request: Request, { params }: { params: { id: string 
              }
 
              if (item.ErrorSubType) {
-                 const msg = `${item.ErrorSubType}: ${item.ErrorDescription || ''}`;
+                 const subTypeRaw = String(item.ErrorSubType || '').trim().toUpperCase();
+                 const label = translateErrorSubType(item.ErrorSubType);
+                 const msg = `${label}: ${item.ErrorDescription || ''}`;
                  messages.push(msg);
-                 if (item.ErrorSubType === 'ERROR') hasError = true;
-                 if (item.ErrorSubType === 'INFORMATION') hasInfo = true;
+                 if (subTypeRaw === 'ERROR') hasError = true;
+                 if (subTypeRaw === 'INFORMATION') hasInfo = true;
              }
         }
     };

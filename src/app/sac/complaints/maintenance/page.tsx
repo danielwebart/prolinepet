@@ -341,7 +341,7 @@ export default function ComplaintMaintenancePage() {
                 </tr>
               ))}
               {items.length === 0 && (
-                <tr><td colSpan={13} className="text-center text-gray-500 py-3">Nenhum item. Use "Incluir" para adicionar.</td></tr>
+                <tr><td colSpan={13} className="text-center text-gray-500 py-3">Nenhum item. Use &quot;Incluir&quot; para adicionar.</td></tr>
               )}
             </tbody>
           </table>

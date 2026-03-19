@@ -133,12 +133,6 @@ export default function SalesOrdersPage() {
       <path d="M22 2 15 22l-4-9-9-4Z" strokeWidth="1.5" />
     </svg>
   );
-  const ReturnIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
-      <path d="M9 7 4 12l5 5" strokeWidth="1.5" />
-      <path d="M4 12h10a5 5 0 0 1 0 10h-3" strokeWidth="1.5" />
-    </svg>
-  );
   const TrashIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
       <path d="M3 6h18" strokeWidth="1.5" />
@@ -151,6 +145,7 @@ export default function SalesOrdersPage() {
     <div className="p-6 space-y-4">
       <h1 className="text-xl font-semibold">Venda • Consulta de Pedidos</h1>
       <div className="text-sm text-gray-600">Listagem de pedidos gerenciados pela rotina de Manutenção de Pedidos.</div>
+      {error && <div className="text-sm text-red-600">{error}</div>}
 
       {/* Filtros */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-gray-50 p-3 rounded border border-gray-200">

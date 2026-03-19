@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ ok: true, message: 'Código enviado' });
-  } catch (err) {
+  } catch {
     return NextResponse.json({ message: 'Erro ao solicitar código' }, { status: 500 });
   }
 }

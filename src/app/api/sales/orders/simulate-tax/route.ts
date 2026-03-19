@@ -11,7 +11,6 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const { 
-        customerName,
         customerDoc,
         paymentTerms,
         deliveryDate,
@@ -83,7 +82,7 @@ export async function POST(request: Request) {
           observ: notes || "Simulação via Portal (Novo Pedido)",
           entityDoc: entityDoc
         },
-        orderitem: items.map((item: any, index: number) => ({
+        orderitem: items.map((item: any) => ({
           orderId: 0,
           sku: item.sku || item.inventoryItem?.sku || "",
           quantity: item.quantity,

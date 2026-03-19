@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { safeParseJson } from '../../../lib/safeJson';
 import { useParams } from 'next/navigation';
 import { SignaturePad } from '../../../components/SignaturePad';
-import { useSession } from 'next-auth/react';
 
 export default function WorkOrderDetail() {
   const params = useParams() as any;
@@ -12,20 +11,6 @@ export default function WorkOrderDetail() {
   const [attachments, setAttachments] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
   const [signature, setSignature] = useState<string>("");
-  const { data: session } = useSession();
-  const role = (session?.user as any)?.role as string | undefined;
-  const userId = useMemo(() => {
-    const raw = (session?.user as any)?.id;
-    if (!raw) return undefined;
-    const n = Number(raw);
-    return Number.isNaN(n) ? undefined : n;
-  }, [session]);
-  const [showCloseForm, setShowCloseForm] = useState(false);
-  const [closeForm, setCloseForm] = useState<{ completedAt: string; usedEquipment: Array<{ name: string; qty: string }>; maintainedComponents: string; executionDescription: string; observations: string }>(
-    { completedAt: '', usedEquipment: [{ name: '', qty: '' }], maintainedComponents: '', executionDescription: '', observations: '' }
-  );
-  const [editing, setEditing] = useState(false);
-  const [edit, setEdit] = useState<{ sector: string; maintenanceType: string; scheduledAt: string }>({ sector: '', maintenanceType: '', scheduledAt: '' });
   const [assets, setAssets] = useState<any[]>([]);
 
   // Carregar todos os ativos para montar a árvore de consulta
@@ -39,37 +24,6 @@ export default function WorkOrderDetail() {
     fetch(`/api/work-orders/${id}`).then(r => safeParseJson(r, {} as any)).then(setWo);
     fetch(`/api/work-orders/${id}/attachments`).then(r => safeParseJson(r, [])).then((list) => setAttachments(Array.isArray(list) ? list : []));
   }, [id]);
-
-  // Ensure hooks run before any early returns to keep order stable
-  useEffect(() => {
-    if (!wo) return;
-    setEdit({
-      sector: wo.sector || '',
-      maintenanceType: wo.maintenanceType || '',
-      scheduledAt: wo.scheduledAt ? new Date(wo.scheduledAt).toISOString().slice(0, 16) : ''
-    });
-  }, [wo]);
-
-  const mttrText = useMemo(() => {
-    if (!wo) return '-';
-    if (wo.mttr != null) return `${wo.mttr} min`;
-    try {
-      const s = wo.startedAt ? new Date(wo.startedAt) : null;
-      const c = wo.completedAt ? new Date(wo.completedAt) : null;
-      if (s && c) {
-        const diff = Math.round((c.getTime() - s.getTime()) / 60000);
-        return `${diff} min`;
-      }
-    } catch {}
-    return '-';
-  }, [wo]);
-
-  if (!wo) return <div>Carregando...</div>;
-
-  const canStart = wo.status === 'OPEN' && role === 'TECH' && wo.assignedUserId && userId && Number(wo.assignedUserId) === Number(userId);
-  const canComplete = role === 'TECH' && wo.assignedUserId && userId && Number(wo.assignedUserId) === Number(userId) && wo.status === 'IN_PROGRESS';
-  const canClose = (role && role !== 'TECH' && role !== 'REQUESTER') && wo.status === 'COMPLETED';
-  const canEdit = role && role !== 'TECH';
 
   const printOS = () => {
     const w = window.open('', '_blank');
@@ -226,62 +180,8 @@ export default function WorkOrderDetail() {
       </ul>
     );
   };
-
-  const startWorkOrder = async () => {
-    await fetch(`/api/work-orders/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'start' })
-    });
-    const updated = await fetch(`/api/work-orders/${id}`).then(r => safeParseJson(r, {} as any));
-    setWo(updated);
-  };
-
-  const completeWorkOrder = async () => {
-    const completedAt = closeForm.completedAt ? new Date(closeForm.completedAt).toISOString() : new Date().toISOString();
-    const usedEquipment = closeForm.usedEquipment
-      .filter((i) => i.name.trim() && i.qty.trim())
-      .map((i) => ({ name: i.name.trim(), qty: Number(i.qty) }));
-    const maintainedComponents = closeForm.maintainedComponents
-      ? closeForm.maintainedComponents.split(',').map((s) => s.trim()).filter(Boolean)
-      : undefined;
-    const payload = {
-      action: 'complete',
-      completedAt,
-      usedEquipment,
-      maintainedComponents,
-      executionDescription: closeForm.executionDescription || undefined,
-      observations: closeForm.observations || undefined,
-      technicianSignature: signature || undefined,
-    };
-    await fetch(`/api/work-orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const updated = await fetch(`/api/work-orders/${id}`).then(r => safeParseJson(r, {} as any));
-    setWo(updated);
-    setShowCloseForm(false);
-  };
-
-  const closeWorkOrder = async () => {
-    const payload = { action: 'close', closedAt: new Date().toISOString() };
-    await fetch(`/api/work-orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const updated = await fetch(`/api/work-orders/${id}`).then(r => safeParseJson(r, {} as any));
-    setWo(updated);
-  };
-
-  
-
-  const saveEdits = async () => {
-    const payload: any = {
-      sector: edit.sector || null,
-      maintenanceType: edit.maintenanceType || null,
-      scheduledAt: edit.scheduledAt ? new Date(edit.scheduledAt).toISOString() : null,
-    };
-    await fetch(`/api/work-orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const updated = await fetch(`/api/work-orders/${id}`).then(r => safeParseJson(r, {} as any));
-    setWo(updated);
-    setEditing(false);
-  };
-
-  
+ 
+  if (!wo) return <div>Carregando...</div>;
 
   return (
     <div className="space-y-4">

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 // POST: { cnpj, name }
 // Cria a entidade especificada, vincula todos os módulos à entidade,

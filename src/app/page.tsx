@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 export default async function HomePage() {
   const session = await getServerSession(authOptions);
   const uid = session?.user ? Number((session.user as any).id) : null;
-  const activeEntityId = (session as any)?.activeEntityId ? Number((session as any).activeEntityId) : null;
+  const activeEntityId = (session as any)?.entityId ? Number((session as any).entityId) : ((session as any)?.activeEntityId ? Number((session as any).activeEntityId) : null);
 
   let modules: any[] = [];
 

@@ -6,6 +6,8 @@
     "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start -p 3001",
+    "start:prod": "node server.js",
+    "build:standalone": "next build",
     "lint": "next lint",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -20,6 +22,7 @@
     "chart.js": "^4.5.1",
     "date-fns": "^2.30.0",
     "dotenv": "^17.2.3",
+    "lucide-react": "^0.577.0",
     "next": "14.2.10",
     "next-auth": "^4.24.7",
     "nodemailer": "^7.0.13",
@@ -27,7 +30,9 @@
     "qrcode": "^1.5.4",
     "react": "18.2.0",
     "react-chartjs-2": "^5.3.1",
-    "react-dom": "18.2.0"
+    "react-dom": "18.2.0",
+    "recharts": "^3.7.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.0",

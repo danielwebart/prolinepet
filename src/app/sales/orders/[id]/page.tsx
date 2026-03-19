@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { SalesOrderItemRow, supportsSheetDims, supportsCoreDims } from "../components/SalesOrderItemRow";
 
@@ -8,7 +8,7 @@ type InventoryItem = {
   sku?: string | null;
   name: string;
   unit?: string | null;
-  commercialFamily?: { id: number; name: string } | null;
+  commercialFamily?: { id: number; description?: string | null; name?: string | null; priceBy?: string | null } | null;
   unitPrice?: number | null;
   width?: number | null;
   length?: number | null;
@@ -44,6 +44,7 @@ type SalesOrder = {
   orderDate: string;
   customerName: string;
   customerDoc?: string | null;
+  clientId?: number | null;
   paymentTerms?: string | null;
   deliveryDate?: string | null;
   notes?: string | null;
@@ -106,7 +107,6 @@ const AsyncSelect = ({
 }) => {
   const [open, setOpen] = useState(false);
   const [opts, setOpts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
   const wrapperRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -122,7 +122,6 @@ const AsyncSelect = ({
   const handleSearch = async (q: string) => {
     onChange(q);
     if (q.length < minChars) { setOpts([]); return; }
-    setLoading(true);
     try {
       const res = await fetch(fetchUrl(q));
       if (res.ok) {
@@ -130,7 +129,7 @@ const AsyncSelect = ({
         setOpts(Array.isArray(data) ? data : []);
         setOpen(true);
       }
-    } catch { } finally { setLoading(false); }
+    } catch { }
   };
 
   return (
@@ -172,7 +171,8 @@ const AsyncSelect = ({
 };
 
 function familyName(it: OrderItem): string {
-  let fam = (it.inventoryItem?.commercialFamily?.name || '').trim();
+  const cf: any = it.inventoryItem?.commercialFamily;
+  let fam = String(cf?.description || cf?.name || '').trim();
   if (!fam) {
     const name = (it.name || '').toUpperCase();
     if (name.includes('CHAPA') || name.includes('CHAPAS')) fam = 'CHAPAS';
@@ -235,6 +235,24 @@ function statusLabelPt(s?: string): string {
   }
 }
 
+function translateHistoryMessageLabel(m: string): string {
+  const raw = String(m ?? '');
+  const trimmed = raw.trimStart();
+  const prefixMatch = trimmed.match(/^([A-Z_]+)\s*:\s*/i);
+  if (!prefixMatch) return raw;
+  const prefixRaw = String(prefixMatch[1] || '').trim().toUpperCase();
+  let translated = prefixRaw;
+  if (prefixRaw === 'ERROR') translated = 'ERRO';
+  else if (prefixRaw === 'INFORMATION' || prefixRaw === 'INFO') translated = 'INFORMAÇÃO';
+  else if (prefixRaw === 'WARNING' || prefixRaw === 'WARN') translated = 'AVISO';
+  if (translated === prefixRaw) return raw;
+  const startIdx = raw.indexOf(prefixMatch[1] as string);
+  if (startIdx < 0) return raw;
+  const afterPrefixIdx = startIdx + (prefixMatch[1] as string).length;
+  const rest = raw.slice(afterPrefixIdx);
+  return raw.slice(0, startIdx) + translated + rest;
+}
+
 export default function SalesOrderMaintenancePage() {
   const params = useParams() as any;
   const id = Number(params.id);
@@ -244,13 +262,13 @@ export default function SalesOrderMaintenancePage() {
   const [error, setError] = useState<string | null>(null);
   const [showFeaturesFor, setShowFeaturesFor] = useState<number | null>(null);
   const [hdrDraft, setHdrDraft] = useState<{ paymentTerms?: string; deliveryDate?: string; customerName?: string; customerDoc?: string; triangularCustomerName?: string; triangularCustomerDoc?: string }>({});
+  const [hdrCustomerId, setHdrCustomerId] = useState<number | null>(null);
   const [isHeaderEditing, setIsHeaderEditing] = useState(false);
   const [addingItems, setAddingItems] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<InventoryItem[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [simulatedTotal, setSimulatedTotal] = useState<number | null>(null);
   const [simulating, setSimulating] = useState(false);
   const [integrating, setIntegrating] = useState(false);
   const [checkingEdit, setCheckingEdit] = useState(false);
@@ -294,7 +312,6 @@ export default function SalesOrderMaintenancePage() {
       console.log('Simulation result:', data);
       
       if (data && data.vltotcomimp !== undefined) {
-         setSimulatedTotal(Number(data.vltotcomimp));
          await refreshOrder();
       } else if (data && data.RowErrors && Array.isArray(data.RowErrors)) {
          const errors = data.RowErrors.map((e: any) => `- ${e.ErrorDescription || 'Erro desconhecido'}`).join('\n');
@@ -415,6 +432,7 @@ export default function SalesOrderMaintenancePage() {
         const data: SalesOrder = await res.json();
         setOrder(data);
         setOrderItems(data.items || []);
+        setHdrCustomerId((data as any)?.clientId != null ? Number((data as any).clientId) : null);
         setHdrDraft({
           paymentTerms: data.paymentTerms || '',
           deliveryDate: data.deliveryDate ? new Date(data.deliveryDate).toISOString().slice(0, 10) : '',
@@ -423,6 +441,20 @@ export default function SalesOrderMaintenancePage() {
           triangularCustomerName: data.triangularCustomerName || '',
           triangularCustomerDoc: data.triangularCustomerDoc || ''
         });
+
+        if (((data as any)?.clientId == null) && data.customerDoc) {
+          try {
+            const docDigits = String(data.customerDoc || '').replace(/\D+/g, '');
+            if (docDigits) {
+              const cRes = await fetch(`/api/base/clients?q=${encodeURIComponent(docDigits)}`);
+              const cArr = await cRes.json();
+              if (Array.isArray(cArr)) {
+                const match = cArr.find((x: any) => String(x?.doc || '').replace(/\D+/g, '') === docDigits) || cArr[0];
+                if (match?.id) setHdrCustomerId(Number(match.id));
+              }
+            }
+          } catch {}
+        }
       } catch (e: any) {
         if (e?.name === 'AbortError') {
           setError('Tempo limite ao carregar o pedido. Tente novamente.');
@@ -459,7 +491,19 @@ export default function SalesOrderMaintenancePage() {
     return 0;
   };
 
-  const saveHeader = async (partial: { paymentTerms?: string; deliveryDate?: string; customerName?: string; customerDoc?: string; triangularCustomerName?: string; triangularCustomerDoc?: string }) => {
+  const familyPriceBy = (it: OrderItem): 'UNIT' | 'WEIGHT' => {
+    const pb = String(it.inventoryItem?.commercialFamily?.priceBy || '').trim().toUpperCase();
+    return pb === 'WEIGHT' || pb === 'PESO' ? 'WEIGHT' : 'UNIT';
+  };
+
+  const lineBase = (it: OrderItem): number => {
+    const qty = it.quantity ?? 0;
+    const price = it.unitPrice ?? 0;
+    if (familyPriceBy(it) === 'WEIGHT') return computeWeightKg(it) * price;
+    return qty * price;
+  };
+
+  const saveHeader = async (partial: { paymentTerms?: string; deliveryDate?: string; customerName?: string; customerDoc?: string; triangularCustomerName?: string; triangularCustomerDoc?: string; clientId?: number | null }) => {
     if (!order) return;
 
     // Validate items: Sum of creases vs Width
@@ -485,6 +529,7 @@ export default function SalesOrderMaintenancePage() {
       if (!res.ok) throw new Error('Falha ao salvar cabeçalho');
       const updated: SalesOrder = await res.json();
       setOrder(updated);
+      setHdrCustomerId((updated as any)?.clientId != null ? Number((updated as any).clientId) : hdrCustomerId);
       setHdrDraft({
         paymentTerms: updated.paymentTerms || '',
         deliveryDate: updated.deliveryDate ? new Date(updated.deliveryDate).toISOString().slice(0,10) : '',
@@ -505,8 +550,8 @@ export default function SalesOrderMaintenancePage() {
   };
 
   const globalItems = orderItems;
-  const globalSubtotal = globalItems.reduce((s, it) => s + (it.quantity * it.unitPrice), 0);
-  const globalDiscount = globalItems.reduce((s, it) => s + (it.quantity * it.unitPrice * (it.discountPct / 100)), 0);
+  const globalSubtotal = globalItems.reduce((s, it) => s + lineBase(it), 0);
+  const globalDiscount = globalItems.reduce((s, it) => s + (lineBase(it) * (it.discountPct / 100)), 0);
   const globalTotalNoTax = globalSubtotal - globalDiscount;
   const globalWeight = globalItems.reduce((s, it) => s + Math.round(computeWeightKg(it)), 0);
 
@@ -599,6 +644,19 @@ export default function SalesOrderMaintenancePage() {
                         onChange={(val) => setHdrDraft((d) => ({ ...d, customerName: val }))}
                         onSelectObj={(item) => {
                            setHdrDraft((d) => ({ ...d, customerName: item.name, customerDoc: item.doc }));
+                           setHdrCustomerId(Number(item.id));
+                           (async () => {
+                             try {
+                               const ptRes = await fetch(`/api/base/payment-terms?clientId=${Number(item.id)}`);
+                               const ptData = await ptRes.json();
+                               const list = Array.isArray(ptData) ? ptData : [];
+                               const first = list[0];
+                               if (first?.description) {
+                                 const newVal = first.code != null ? `[${first.code}] ${first.description}` : String(first.description);
+                                 setHdrDraft((d) => ({ ...d, paymentTerms: newVal }));
+                               }
+                             } catch {}
+                           })();
                         }}
                         fetchUrl={(q) => `/api/base/clients?q=${q}`}
                         placeholder="Pesquise por nome ou documento"
@@ -620,7 +678,7 @@ export default function SalesOrderMaintenancePage() {
                          const newVal = `[${item.code}] ${item.description}`;
                          setHdrDraft((d) => ({ ...d, paymentTerms: newVal }));
                       }}
-                      fetchUrl={(q) => `/api/base/payment-terms?q=${q}`}
+                      fetchUrl={(q) => `/api/base/payment-terms?clientId=${hdrCustomerId ? String(hdrCustomerId) : '0'}&q=${q}`}
                       placeholder="Digite código ou descrição"
                       getLabel={(item) => `[${item.code}] ${item.description}`}
                       renderOption={(item) => (
@@ -728,10 +786,10 @@ export default function SalesOrderMaintenancePage() {
                 </button>
                 {isHeaderEditing ? (
                   <>
-                    <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-green-600" title="Salvar" aria-label="Salvar" onClick={() => saveHeader({ paymentTerms: hdrDraft.paymentTerms, deliveryDate: hdrDraft.deliveryDate, customerName: hdrDraft.customerName, customerDoc: hdrDraft.customerDoc, triangularCustomerName: hdrDraft.triangularCustomerName, triangularCustomerDoc: hdrDraft.triangularCustomerDoc })}>
+                    <button className="inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-green-600" title="Salvar" aria-label="Salvar" onClick={() => saveHeader({ paymentTerms: hdrDraft.paymentTerms, deliveryDate: hdrDraft.deliveryDate, customerName: hdrDraft.customerName, customerDoc: hdrDraft.customerDoc, triangularCustomerName: hdrDraft.triangularCustomerName, triangularCustomerDoc: hdrDraft.triangularCustomerDoc, clientId: hdrCustomerId })}>
                       <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17Z"/></svg>
                     </button>
-                    <button className="inline-flex items-center justify-center w-8 h-8 bg-red-50 border border-red-200 rounded shadow-sm hover:bg-red-100 text-red-600" title="Cancelar" aria-label="Cancelar" onClick={() => { setIsHeaderEditing(false); setHdrDraft({ paymentTerms: order.paymentTerms || '', deliveryDate: order.deliveryDate ? new Date(order.deliveryDate).toISOString().slice(0,10) : '', customerName: order.customerName || '', customerDoc: order.customerDoc || '', triangularCustomerName: order.triangularCustomerName || '', triangularCustomerDoc: order.triangularCustomerDoc || '' }); }}>
+                    <button className="inline-flex items-center justify-center w-8 h-8 bg-red-50 border border-red-200 rounded shadow-sm hover:bg-red-100 text-red-600" title="Cancelar" aria-label="Cancelar" onClick={() => { setIsHeaderEditing(false); setHdrCustomerId((order as any)?.clientId != null ? Number((order as any).clientId) : hdrCustomerId); setHdrDraft({ paymentTerms: order.paymentTerms || '', deliveryDate: order.deliveryDate ? new Date(order.deliveryDate).toISOString().slice(0,10) : '', customerName: order.customerName || '', customerDoc: order.customerDoc || '', triangularCustomerName: order.triangularCustomerName || '', triangularCustomerDoc: order.triangularCustomerDoc || '' }); }}>
                       <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.41 4.29 19.71 2.88 18.3 9.17 12 2.88 5.71 4.29 4.29 10.59 10.59 16.89 4.29l1.41 1.42Z"/></svg>
                     </button>
                   </>
@@ -848,7 +906,7 @@ export default function SalesOrderMaintenancePage() {
                     </div>
                     <div className="mt-2 text-sm text-gray-800 space-y-1">
                       {(h.messages || []).map((m: any, idx: number) => (
-                        <div key={idx}>{String(m)}</div>
+                        <div key={idx}>{translateHistoryMessageLabel(String(m))}</div>
                       ))}
                     </div>
                   </div>
@@ -1033,8 +1091,8 @@ export default function SalesOrderMaintenancePage() {
                 </table>
               </div>
               {(() => {
-                const subtotal = list.reduce((s, it) => s + (it.quantity * it.unitPrice), 0);
-                const discountTotal = list.reduce((s, it) => s + (it.quantity * it.unitPrice * (it.discountPct / 100)), 0);
+                const subtotal = list.reduce((s, it) => s + lineBase(it), 0);
+                const discountTotal = list.reduce((s, it) => s + (lineBase(it) * (it.discountPct / 100)), 0);
                 const total = subtotal - discountTotal;
                 const totalWeight = list.reduce((s, it) => s + Math.round(computeWeightKg(it)), 0);
                 return (

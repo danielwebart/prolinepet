@@ -1,6 +1,6 @@
 "use client";
 // Rebuild trigger: Fix webpack runtime error
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type EntityItem = { id: number; name: string; cnpj: string; linked: number | boolean };
 type ModuleItem = { id: number; code: string; name: string; userLinked: number | boolean };
@@ -44,25 +44,25 @@ export default function UsersPage() {
   }, [users, userQuery]);
   const allVisibleSelected = useMemo(() => filteredUsers.length > 0 && filteredUsers.every((u:any) => selectedIds.includes(u.id)), [filteredUsers, selectedIds]);
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     setLoading(true); setErr(null);
     try {
       const res = await fetch("/api/users");
       const data = await res.json();
       const arr = Array.isArray(data) ? data : [];
       setUsers(arr);
-      if (!selectedUserId && arr.length) setSelectedUserId(arr[0].id);
+      setSelectedUserId((prev) => prev ?? (arr.length ? arr[0].id : null));
       setSelectedIds((prev) => prev.filter((id) => arr.some((u:any) => u.id === id)));
     } catch (e: any) { setErr(e?.message || String(e)); }
     finally { setLoading(false); }
-  };
+  }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true); setErr(null);
     try {
       if (editingUserId) {
-        const res = await fetch(`/api/users/${editingUserId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+        const res = await fetch(`/api/users`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editingUserId, ...form }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
         setEditingUserId(null);
@@ -81,17 +81,17 @@ export default function UsersPage() {
     finally { setLoading(false); }
   };
 
-  const loadEntities = async (uid: number) => {
+  const loadEntities = useCallback(async (uid: number) => {
     setLoading(true); setErr(null);
     try {
       const res = await fetch(`/api/admin/users/${uid}/entities`);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
       setEntities(data.entities || []);
-      if (!selectedEntityId && (data.entities?.length || 0) > 0) setSelectedEntityId(data.entities[0].id);
+      setSelectedEntityId((prev) => prev ?? (data.entities?.length ? data.entities[0].id : null));
     } catch (e: any) { setErr(e?.message || String(e)); }
     finally { setLoading(false); }
-  };
+  }, []);
 
   const loadModules = async (uid: number, eid: number) => {
     setLoading(true); setErr(null);
@@ -117,17 +117,10 @@ export default function UsersPage() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { loadUsers(); }, []);
-  useEffect(() => { if (selectedUserId) loadEntities(selectedUserId); }, [selectedUserId]);
+  useEffect(() => { loadUsers(); }, [loadUsers]);
+  useEffect(() => { if (selectedUserId) loadEntities(selectedUserId); }, [selectedUserId, loadEntities]);
   useEffect(() => { if (selectedUserId && selectedEntityId) loadModules(selectedUserId, selectedEntityId); }, [selectedUserId, selectedEntityId]);
   useEffect(() => { if (selectedUserId && selectedEntityId && selectedModuleId) loadPrograms(selectedUserId, selectedEntityId, selectedModuleId); }, [selectedUserId, selectedEntityId, selectedModuleId]);
-
-  const startEditSelectedUser = () => {
-    if (!selectedUser) return;
-    setEditingUserId(selectedUser.id);
-    setForm({ name: selectedUser.name || "", email: selectedUser.email || "", password: "", doc: String((selectedUser as any)?.doc || "") });
-    setFormOpen(true);
-  };
 
   const cancelEdit = () => {
     setEditingUserId(null);
@@ -138,8 +131,8 @@ export default function UsersPage() {
     if (!selectedUserId) return;
     setLoading(true); setErr(null);
     try {
-      const res = await fetch(`/api/users/${selectedUserId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ salesRepAdmin: checked })
+      const res = await fetch(`/api/users`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: selectedUserId, salesRepAdmin: checked })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
@@ -154,8 +147,8 @@ export default function UsersPage() {
     if (!selectedUserId) return;
     setLoading(true); setErr(null);
     try {
-      const res = await fetch(`/api/users/${selectedUserId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isSalesAdmin: checked })
+      const res = await fetch(`/api/users`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: selectedUserId, isSalesAdmin: checked })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
@@ -170,8 +163,8 @@ export default function UsersPage() {
     if (!selectedUserId) return;
     setLoading(true); setErr(null);
     try {
-      const res = await fetch(`/api/users/${selectedUserId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ twoFactorRequired: checked })
+      const res = await fetch(`/api/users`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: selectedUserId, twoFactorRequired: checked })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
@@ -198,46 +191,17 @@ export default function UsersPage() {
     finally { setLoading(false); }
   };
 
-  const selectedUserIds = useMemo(() => selectedIds.length > 0 ? selectedIds : (selectedUserId ? [selectedUserId] : []), [selectedIds, selectedUserId]);
-
   const setErpMode = async (mode: string) => {
     if (!selectedUserId) return;
     setLoading(true); setErr(null);
     try {
-      const res = await fetch(`/api/users/${selectedUserId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ erpIntegrationMode: mode })
+      const res = await fetch(`/api/users`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: selectedUserId, erpIntegrationMode: mode })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
       await loadUsers();
       setSelectedUserId(data.id);
-    } catch (e: any) { setErr(e?.message || String(e)); }
-    finally { setLoading(false); }
-  };
-
-  const deleteSelectedUser = async () => {
-    if (!selectedUserId) return;
-    const ok = typeof window !== 'undefined' ? window.confirm('Excluir este usuário e remover todos os vínculos?') : true;
-    if (!ok) return;
-    setLoading(true); setErr(null);
-    try {
-      const res = await fetch(`/api/users/${selectedUserId}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
-      await loadUsers();
-      // Resetar seleções
-      setSelectedEntityId(null);
-      setEntities([]);
-      setSelectedModuleId(null);
-      setModules([]);
-      setPrograms([]);
-      setEditingUserId(null);
-      setForm({ name: "", email: "", password: "", doc: "" });
-      // Selecionar o primeiro usuário, se existir
-      setSelectedUserId(prev => {
-        const first = users[0]?.id ?? null;
-        return first;
-      });
     } catch (e: any) { setErr(e?.message || String(e)); }
     finally { setLoading(false); }
   };
@@ -400,8 +364,8 @@ export default function UsersPage() {
       <div className="bg-white rounded border p-3 space-y-2">
         <div className="flex items-center gap-2">
           <input value={userQuery} onChange={(e)=>setUserQuery(e.target.value)} placeholder="Buscar por nome, e-mail ou CPF/CNPJ" className="flex-1 border rounded px-3 py-2 text-sm" />
-          <button onClick={openAddForm} className="px-3 py-2 rounded bg-green-600 text-white text-sm">Incluir usuário</button>
-          <button onClick={bulkDelete} disabled={selectedIds.length===0} className="px-3 py-2 rounded border border-red-300 text-red-700 text-sm disabled:opacity-50">Excluir selecionados</button>
+          <button type="button" onClick={openAddForm} className="px-3 py-2 rounded bg-green-600 text-white text-sm">Incluir usuário</button>
+          <button type="button" onClick={bulkDelete} disabled={selectedIds.length===0} className="px-3 py-2 rounded border border-red-300 text-red-700 text-sm disabled:opacity-50">Excluir selecionados</button>
         </div>
         <div className="text-xs text-gray-600">{selectedIds.length > 0 ? `${selectedIds.length} selecionado(s)` : ''}</div>
         <div className="border rounded">
@@ -418,7 +382,7 @@ export default function UsersPage() {
               {filteredUsers.map((u:any) => (
                 <tr key={u.id} className="border-b hover:bg-gray-50">
                   <td className="p-2 text-center"><input type="checkbox" checked={selectedIds.includes(u.id)} onChange={(e)=>toggleRow(u.id, e.target.checked)} /></td>
-                  <td className="p-2"><button className="text-left w-full" onClick={() => { setSelectedUserId(u.id); setEditingUserId(u.id); setForm({ name: u.name || '', email: u.email || '', password: '', doc: String(u.doc || '') }); setFormOpen(true); }}>{u.name}</button></td>
+                  <td className="p-2"><button type="button" className="text-left w-full" onClick={() => { setSelectedUserId(u.id); setEditingUserId(u.id); setForm({ name: u.name || '', email: u.email || '', password: '', doc: String(u.doc || '') }); setFormOpen(true); }}>{u.name}</button></td>
                   <td className="p-2">{formatDoc(String(u.doc || ''))}</td>
                   <td className="p-2">{u.email}</td>
                 </tr>
@@ -456,7 +420,7 @@ export default function UsersPage() {
       {formOpen && (
       <div className="bg-white rounded border p-3">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="font-medium">Tag's</h2>
+          <h2 className="font-medium">Tags</h2>
         </div>
         <label className="text-sm flex items-center gap-1">
           <input
@@ -488,6 +452,7 @@ export default function UsersPage() {
   </label>
           {selectedUser?.hasTwoFactorSecret && (
             <button
+              type="button"
               onClick={resetTwoFactor}
               className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded border border-red-200 hover:bg-red-200"
               title="Resetar 2FA do usuário"
@@ -534,12 +499,12 @@ export default function UsersPage() {
         <div className="bg-white rounded border p-3">
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-medium">Entidades {selectedUser ? `• ${selectedUser.name}` : ''}</h2>
-            {selectedUserId && <button onClick={() => loadEntities(selectedUserId!)} className="text-xs px-2 py-1 border rounded">Atualizar</button>}
+            {selectedUserId && <button type="button" onClick={() => loadEntities(selectedUserId!)} className="text-xs px-2 py-1 border rounded">Atualizar</button>}
           </div>
           <div className="space-y-2">
             {entities.map(e => (
               <div key={e.id} className={`flex items-center justify-between gap-2 px-2 py-1 rounded ${selectedEntityId===e.id?'bg-blue-50 border border-blue-200':'border'}`}>
-                <button onClick={() => setSelectedEntityId(e.id)} className="text-left flex-1">
+                <button type="button" onClick={() => setSelectedEntityId(e.id)} className="text-left flex-1">
                   <div className="text-sm font-medium">{e.name}</div>
                   <div className="text-xs text-gray-500">{e.cnpj}</div>
                 </button>
@@ -558,14 +523,14 @@ export default function UsersPage() {
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-medium">Módulos {selectedEntity ? `• ${selectedEntity.name}` : ''}</h2>
             <div className="flex items-center gap-2">
-              <button onClick={linkAllModules} disabled={!selectedEntity?.linked} className="text-xs px-2 py-1 border rounded">Vincular todos</button>
-              <button onClick={unlinkAllModules} disabled={!selectedEntity?.linked} className="text-xs px-2 py-1 border rounded">Desvincular todos</button>
+              <button type="button" onClick={linkAllModules} disabled={!selectedEntity?.linked} className="text-xs px-2 py-1 border rounded">Vincular todos</button>
+              <button type="button" onClick={unlinkAllModules} disabled={!selectedEntity?.linked} className="text-xs px-2 py-1 border rounded">Desvincular todos</button>
             </div>
           </div>
           <div className="space-y-2">
             {modules.map(m => (
               <div key={m.id} className={`flex items-center justify-between gap-2 px-2 py-1 rounded ${selectedModuleId===m.id?'bg-blue-50 border border-blue-200':'border'}`}>
-                <button onClick={() => setSelectedModuleId(m.id)} className="text-left flex-1">
+                <button type="button" onClick={() => setSelectedModuleId(m.id)} className="text-left flex-1">
                   <div className="text-sm font-medium">{m.name}</div>
                   <div className="text-xs text-gray-500">{m.code}</div>
                 </button>
@@ -590,8 +555,8 @@ export default function UsersPage() {
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-medium">Programas {selectedModule ? `• ${selectedModule.name}` : ''}</h2>
             <div className="flex items-center gap-2">
-              <button onClick={linkAllPrograms} disabled={!selectedEntity?.linked || !selectedModule?.userLinked} className="text-xs px-2 py-1 border rounded">Vincular todos</button>
-              <button onClick={unlinkAllPrograms} disabled={!selectedEntity?.linked || !selectedModule?.userLinked} className="text-xs px-2 py-1 border rounded">Desvincular todos</button>
+              <button type="button" onClick={linkAllPrograms} disabled={!selectedEntity?.linked || !selectedModule?.userLinked} className="text-xs px-2 py-1 border rounded">Vincular todos</button>
+              <button type="button" onClick={unlinkAllPrograms} disabled={!selectedEntity?.linked || !selectedModule?.userLinked} className="text-xs px-2 py-1 border rounded">Desvincular todos</button>
             </div>
           </div>
           <div className="space-y-2">

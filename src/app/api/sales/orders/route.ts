@@ -7,8 +7,67 @@ function normalizeDoc(doc: string): string {
   return (doc || '').replace(/\D+/g, '');
 }
 
+async function ensureCommercialFamilyColumns() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "CommercialFamily" (
+      "id" SERIAL PRIMARY KEY,
+      "description" TEXT NOT NULL,
+      "erpCode" TEXT,
+      "priceBy" TEXT DEFAULT 'UNIT',
+      "createdAt" TIMESTAMP DEFAULT NOW(),
+      "updatedAt" TIMESTAMP
+    );
+  `);
+  await prisma.$executeRawUnsafe('ALTER TABLE "CommercialFamily" ADD COLUMN IF NOT EXISTS "erpCode" TEXT');
+  await prisma.$executeRawUnsafe('ALTER TABLE "CommercialFamily" ADD COLUMN IF NOT EXISTS "priceBy" TEXT DEFAULT \'UNIT\'');
+  await prisma.$executeRawUnsafe('UPDATE "CommercialFamily" SET "priceBy"=\'UNIT\' WHERE "priceBy" IS NULL');
+}
+
+async function ensureClientPaymentTermColumn() {
+  await prisma.$executeRawUnsafe('ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "paymentTermId" INTEGER');
+}
+
+async function ensureClientPaymentTermsTable() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "ClientPaymentTerm" (
+      "id" SERIAL PRIMARY KEY,
+      "clientId" INTEGER NOT NULL,
+      "paymentTermId" INTEGER NOT NULL,
+      "position" INTEGER DEFAULT 0,
+      "createdAt" TIMESTAMP DEFAULT NOW(),
+      "updatedAt" TIMESTAMP
+    );
+  `);
+  await prisma.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "ClientPaymentTerm_clientId_paymentTermId_key" ON "ClientPaymentTerm" ("clientId","paymentTermId")');
+  await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "ClientPaymentTerm_clientId_idx" ON "ClientPaymentTerm" ("clientId")');
+  await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "ClientPaymentTerm_paymentTermId_idx" ON "ClientPaymentTerm" ("paymentTermId")');
+}
+
+function computeWeightKgFromFields(it: { width?: number | null; length?: number | null; grammage?: number | null; quantity?: number | null }): number {
+  const w = Number(it.width ?? 0);
+  const l = Number(it.length ?? 0);
+  const g = Number(it.grammage ?? 0);
+  const q = Number(it.quantity ?? 0);
+  if (w > 0 && l > 0 && g > 0 && q > 0) {
+    const areaM2 = (l / 1000) * (w / 1000);
+    const weightKg = (areaM2 * g * q) / 1000;
+    return weightKg;
+  }
+  return 0;
+}
+
+function lineBase(it: { quantity?: number | null; unitPrice?: number | null; width?: number | null; length?: number | null; grammage?: number | null }, priceBy?: string | null): number {
+  const qty = Number(it.quantity ?? 0);
+  const price = Number(it.unitPrice ?? 0);
+  const pb = String(priceBy || '').trim().toUpperCase();
+  if (pb === 'WEIGHT' || pb === 'PESO') return computeWeightKgFromFields(it) * price;
+  return qty * price;
+}
+
 export async function GET(request: Request) {
   try {
+    await ensureCommercialFamilyColumns();
+    await ensureClientPaymentTermColumn();
     const session = await getServerSession(authOptions);
     const userId = session?.user ? Number((session.user as any).id) : null;
     if (!userId) return NextResponse.json([]);
@@ -17,9 +76,9 @@ export async function GET(request: Request) {
     const requestedDocRaw = url.searchParams.get('doc');
     const requestedDoc = requestedDocRaw ? normalizeDoc(requestedDocRaw) : undefined;
 
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { salesRepAdmin: true } });
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { salesRepAdmin: true, isSalesAdmin: true } });
     const hasLinks = Boolean(await prisma.userClientRep.findFirst({ where: { userId }, select: { id: true } }));
-    const shouldRestrict = Boolean(user?.salesRepAdmin) || hasLinks;
+    const shouldRestrict = !Boolean(user?.isSalesAdmin) && (Boolean(user?.salesRepAdmin) || hasLinks);
 
     let where: any = requestedDoc ? { customerDoc: requestedDoc } : undefined;
 
@@ -69,12 +128,16 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    await ensureCommercialFamilyColumns();
+    await ensureClientPaymentTermColumn();
+    await ensureClientPaymentTermsTable();
     const body = await request.json();
     const session = await getServerSession(authOptions);
     const createdById = session?.user ? Number((session.user as any).id) : undefined;
     const {
       customerName,
       customerDoc,
+      customerId,
       triangularCustomerName,
       triangularCustomerDoc,
       paymentTerms,
@@ -87,6 +150,17 @@ export async function POST(request: Request) {
     } = body || {};
     if (!customerName) {
       return NextResponse.json({ error: 'customerName é obrigatório' }, { status: 400 });
+    }
+
+    const customerDocNorm = typeof customerDoc === 'string' ? normalizeDoc(customerDoc) : undefined;
+    const triangularCustomerDocNorm = typeof triangularCustomerDoc === 'string' ? normalizeDoc(triangularCustomerDoc) : undefined;
+
+    let clientId: number | undefined = undefined;
+    if (typeof customerId === 'number' && Number.isFinite(customerId) && customerId > 0) {
+      clientId = Math.trunc(customerId);
+    } else if (customerDocNorm) {
+      const c = await prisma.client.findFirst({ where: { doc: customerDocNorm }, select: { id: true } }).catch(() => null);
+      if (c?.id) clientId = Number(c.id);
     }
     const parseDate = (value: any): Date | undefined => {
       if (!value) return undefined;
@@ -149,13 +223,45 @@ export async function POST(request: Request) {
       const u = await prisma.user.findUnique({ where: { id: createdById }, select: { lastEntityId: true } });
       if (u?.lastEntityId) entityId = u.lastEntityId;
     }
-    const normalizedItems = (Array.isArray(items) ? items : []).map((it: any) => {
+    const rawItems = Array.isArray(items) ? items : [];
+    const invIds = rawItems
+      .map((it: any) => Number(it?.inventoryItemId))
+      .filter((n: any) => Number.isFinite(n) && n > 0);
+    const invMap = new Map<number, { priceBy?: string | null }>();
+    if (invIds.length > 0) {
+      const unique = Array.from(new Set(invIds));
+      const inList = unique.join(',');
+      const rows: any[] = await prisma.$queryRawUnsafe(`
+        SELECT inv."id" AS "inventoryItemId", cf."priceBy" AS "priceBy"
+        FROM "InventoryItem" inv
+        LEFT JOIN "CommercialFamily" cf ON cf."id" = inv."commercialFamilyId"
+        WHERE inv."id" IN (${inList})
+      `);
+      for (const r of rows) {
+        const id = Number(r.inventoryItemId);
+        if (Number.isFinite(id) && id > 0) invMap.set(id, { priceBy: r.priceBy != null ? String(r.priceBy) : null });
+      }
+    }
+
+    const normalizedItems = rawItems.map((it: any) => {
       const qty = Number(it.quantity || 1);
       const price = Number(it.unitPrice || 0);
       const disc = Number(it.discountPct || 0);
-      const lineTotal = qty * price * (1 - disc / 100);
+      const inventoryItemId = it.inventoryItemId ? Number(it.inventoryItemId) : undefined;
+      const priceBy = inventoryItemId ? (invMap.get(inventoryItemId)?.priceBy ?? null) : null;
+      const base = lineBase(
+        {
+          quantity: qty,
+          unitPrice: price,
+          width: it.width ? Number(it.width) : undefined,
+          length: it.length ? Number(it.length) : undefined,
+          grammage: it.grammage ? Number(it.grammage) : undefined,
+        },
+        priceBy
+      );
+      const lineTotal = base * (1 - disc / 100);
       return {
-        inventoryItemId: it.inventoryItemId ? Number(it.inventoryItemId) : undefined,
+        inventoryItemId,
         sku: it.sku || undefined,
         name: String(it.name || it.productName || 'Produto'),
         quantity: qty,
@@ -176,18 +282,66 @@ export async function POST(request: Request) {
         lineTotal,
       };
     });
-    const subtotal = normalizedItems.reduce((acc: number, i: any) => acc + i.quantity * i.unitPrice, 0);
-    const discountTotal = normalizedItems.reduce((acc: number, i: any) => acc + (i.quantity * i.unitPrice * (i.discountPct || 0) / 100), 0);
-    const total = normalizedItems.reduce((acc: number, i: any) => acc + i.lineTotal, 0);
+    const subtotal = normalizedItems.reduce((acc: number, i: any) => {
+      const priceBy = i.inventoryItemId ? (invMap.get(i.inventoryItemId)?.priceBy ?? null) : null;
+      return acc + lineBase(i, priceBy);
+    }, 0);
+    const discountTotal = normalizedItems.reduce((acc: number, i: any) => {
+      const priceBy = i.inventoryItemId ? (invMap.get(i.inventoryItemId)?.priceBy ?? null) : null;
+      return acc + (lineBase(i, priceBy) * (Number(i.discountPct || 0) / 100));
+    }, 0);
+    const total = subtotal - discountTotal;
+
+    if (clientId) {
+      const client = await prisma.client.findUnique({
+        where: { id: clientId },
+        select: { id: true, paymentTermId: true }
+      });
+
+      const linkedCount = await prisma.clientPaymentTerm.count({ where: { clientId } });
+      const hasLinkedTerms = linkedCount > 0;
+
+      if (hasLinkedTerms && (!paymentTerms || !String(paymentTerms).trim())) {
+        return NextResponse.json({ error: 'Condição de pagamento é obrigatória para este cliente' }, { status: 400 });
+      }
+
+      if (paymentTerms && String(paymentTerms).trim()) {
+        const raw = String(paymentTerms).trim();
+        const m = raw.match(/^\[(\d+)\]/);
+
+        const resolved = m?.[1]
+          ? await prisma.paymentTerm.findFirst({ where: { code: Number(m[1]) } })
+          : await prisma.paymentTerm.findFirst({
+              where: { description: { equals: raw, mode: 'insensitive' } }
+            });
+
+        if (hasLinkedTerms) {
+          if (!resolved) {
+            return NextResponse.json({ error: 'Condição de pagamento inválida para este cliente' }, { status: 400 });
+          }
+          const allowed = await prisma.clientPaymentTerm.findFirst({
+            where: { clientId, paymentTermId: resolved.id },
+            select: { id: true }
+          });
+          if (!allowed) {
+            return NextResponse.json({ error: 'Condição de pagamento não permitida para este cliente' }, { status: 400 });
+          }
+        } else if (client?.paymentTermId && resolved?.id && client.paymentTermId !== resolved.id) {
+          return NextResponse.json({ error: 'Condição de pagamento não corresponde ao cadastro do cliente' }, { status: 400 });
+        }
+      }
+    }
+
     const code = `ORD-${Date.now()}`;
     const created = await prisma.salesOrder.create({
       data: {
         code,
         entityId,
         customerName,
-        customerDoc: customerDoc || undefined,
+        customerDoc: customerDocNorm || undefined,
+        clientId: clientId,
         triangularCustomerName: triangularCustomerName || undefined,
-        triangularCustomerDoc: triangularCustomerDoc || undefined,
+        triangularCustomerDoc: triangularCustomerDocNorm || undefined,
         paymentTerms: paymentTerms !== undefined && paymentTerms !== null ? String(paymentTerms) : undefined,
         carrier: carrier || undefined,
         deliveryDate: parseDate(deliveryDate),

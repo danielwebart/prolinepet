@@ -3,8 +3,30 @@ import { prisma } from '../../../lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../lib/auth';
 
+async function ensureCommercialFamilyColumns() {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "CommercialFamily" (
+      "id" SERIAL PRIMARY KEY,
+      "description" TEXT NOT NULL,
+      "erpCode" TEXT,
+      "priceBy" TEXT DEFAULT 'UNIT',
+      "createdAt" TIMESTAMP DEFAULT NOW(),
+      "updatedAt" TIMESTAMP
+    );
+  `);
+  await prisma.$executeRawUnsafe('ALTER TABLE "CommercialFamily" ADD COLUMN IF NOT EXISTS "erpCode" TEXT');
+  await prisma.$executeRawUnsafe('ALTER TABLE "CommercialFamily" ADD COLUMN IF NOT EXISTS "priceBy" TEXT DEFAULT \'UNIT\'');
+  await prisma.$executeRawUnsafe('UPDATE "CommercialFamily" SET "priceBy"=\'UNIT\' WHERE "priceBy" IS NULL');
+}
+
+async function ensureClientPaymentTermColumn() {
+  await prisma.$executeRawUnsafe('ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "paymentTermId" INTEGER');
+}
+
 export async function GET(request: Request) {
   try {
+    await ensureCommercialFamilyColumns();
+    await ensureClientPaymentTermColumn();
     const url = new URL(request.url);
     const clientIdParam = url.searchParams.get('clientId');
     const customerDocParam = url.searchParams.get('customerDoc');
@@ -109,6 +131,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  await ensureCommercialFamilyColumns();
+  await ensureClientPaymentTermColumn();
   const body = await request.json();
   const data: any = { name: String(body.name || '').trim() };
   if (body.sku !== undefined) data.sku = String(body.sku || '').trim();

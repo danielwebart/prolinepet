@@ -7,7 +7,7 @@ type InventoryItem = {
   sku?: string | null;
   name: string;
   unit?: string | null;
-  commercialFamily?: { id: number; name: string } | null;
+  commercialFamily?: { id: number; description?: string | null; name?: string | null; priceBy?: string | null } | null;
   unitPrice?: number | null;
   width?: number | null;
   length?: number | null;
@@ -60,7 +60,8 @@ import { SalesOrderItemRow, supportsSheetDims, supportsCoreDims } from "../compo
 const ICON_BTN = "inline-flex items-center justify-center w-8 h-8 bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50 text-gray-700";
 
 function familyName(it: OrderItem): string {
-  let fam = (it.inventoryItem?.commercialFamily?.name || '').trim();
+  const cf: any = it.inventoryItem?.commercialFamily;
+  let fam = String(cf?.description || cf?.name || '').trim();
   if (!fam) {
     const name = (it.name || '').toUpperCase();
     if (name.includes('CHAPA') || name.includes('CHAPAS')) fam = 'CHAPAS';
@@ -72,11 +73,11 @@ function familyName(it: OrderItem): string {
 
 // Helpers imported from components/SalesOrderItemRow
 
-function statusChipStyle(s?: string): string {
+function statusChipStyle(): string {
   return 'bg-gray-100 text-gray-800 border border-gray-300';
 }
 
-function statusLabelPt(s?: string): string {
+function statusLabelPt(): string {
   return 'Novo';
 }
 
@@ -103,7 +104,6 @@ const AsyncSelect = ({
 }) => {
   const [open, setOpen] = useState(false);
   const [opts, setOpts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
   const wrapperRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -119,7 +119,6 @@ const AsyncSelect = ({
   const handleSearch = async (q: string) => {
     onChange(q);
     if (q.length < minChars) { setOpts([]); return; }
-    setLoading(true);
     try {
       const res = await fetch(fetchUrl(q));
       if (res.ok) {
@@ -127,7 +126,7 @@ const AsyncSelect = ({
         setOpts(Array.isArray(data) ? data : []);
         setOpen(true);
       }
-    } catch { } finally { setLoading(false); }
+    } catch { }
   };
 
   return (
@@ -167,36 +166,6 @@ const AsyncSelect = ({
   );
 };
 
-const EditableIntegerInput = ({ value, onChange, className, disabled }: { value: number | undefined, onChange: (v: number | undefined) => void, className?: string, disabled?: boolean }) => {
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = e.target.value.replace(/\D/g, '');
-    onChange(v === '' ? undefined : parseInt(v, 10));
-  };
-  return <input type="text" className={className} value={value ?? ''} onChange={handleChange} disabled={disabled} />;
-};
-
-const EditableDecimalInput = ({ value, onChange, className, disabled }: { value: number | undefined, onChange: (v: number) => void, className?: string, disabled?: boolean }) => {
-  const [str, setStr] = useState(value !== undefined ? value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
-  
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    const filtered = val.replace(/[^0-9,]/g, '');
-    const parts = filtered.split(',');
-    const clean = parts[0] + (parts.length > 1 ? ',' + parts.slice(1).join('') : '');
-    setStr(clean);
-    
-    const dotStr = clean.replace(',', '.');
-    const num = parseFloat(dotStr);
-    onChange(isNaN(num) ? 0 : num);
-  };
-
-  const handleBlur = () => {
-    setStr((value ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-  };
-
-  return <input type="text" className={className} value={str} onChange={handleChange} onBlur={handleBlur} disabled={disabled} />;
-};
-
 function NewSalesOrderContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -218,7 +187,20 @@ function NewSalesOrderContent() {
 
   const [loading, setLoading] = useState(false);
   const [simulating, setSimulating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const loadFirstPaymentTermForClient = async (clientId: number) => {
+    if (!Number.isFinite(clientId) || clientId <= 0) return;
+    try {
+      const res = await fetch(`/api/base/payment-terms?clientId=${clientId}`);
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : [];
+      const first = list[0];
+      if (first?.description) {
+        const v = first.code != null ? `[${first.code}] ${first.description}` : String(first.description);
+        setOrder((prev) => ({ ...prev, paymentTerms: v }));
+      }
+    } catch {}
+  };
   
   useEffect(() => {
     if (customerIdParam) {
@@ -229,6 +211,7 @@ function NewSalesOrderContent() {
             const c = arr.find((x: any) => String(x.id) === customerIdParam);
             if (c) {
               setOrder(prev => ({ ...prev, customerName: c.name, customerDoc: c.doc, customerId: c.id }));
+              loadFirstPaymentTermForClient(Number(c.id));
             }
           }
         })
@@ -282,7 +265,7 @@ function NewSalesOrderContent() {
       
       const res = await fetch(`/api/items?${params.toString()}`);
       if (res.ok) {
-        let data = await res.json();
+        const data = await res.json();
         setSearchResults(data.slice(0, 20));
       }
     } catch (e) {
@@ -350,6 +333,7 @@ function NewSalesOrderContent() {
         body: JSON.stringify({
           customerName: order.customerName,
           customerDoc: order.customerDoc,
+          customerId: order.customerId,
           triangularCustomerName: order.triangularCustomerName,
           triangularCustomerDoc: order.triangularCustomerDoc,
           entityCnpj: sessionEntity?.cnpj,
@@ -394,7 +378,6 @@ function NewSalesOrderContent() {
   };
 
   const fmtCurrency = (n: number | undefined) => (n ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  const fmtNumber = (n: number | undefined) => (n ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmtInt = (n: number | undefined) => Math.round(n ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 
   const handleSimulateTaxes = async () => {
@@ -449,13 +432,25 @@ function NewSalesOrderContent() {
     return 0;
   };
 
+  const familyPriceBy = (it: OrderItem): 'UNIT' | 'WEIGHT' => {
+    const pb = String(it.inventoryItem?.commercialFamily?.priceBy || '').trim().toUpperCase();
+    return pb === 'WEIGHT' || pb === 'PESO' ? 'WEIGHT' : 'UNIT';
+  };
+
+  const lineBase = (it: OrderItem): number => {
+    const qty = it.quantity ?? 0;
+    const price = it.unitPrice ?? 0;
+    if (familyPriceBy(it) === 'WEIGHT') return computeWeightKg(it) * price;
+    return qty * price;
+  };
+
   const globalItems = order.items || [];
   const globalSubtotal = globalItems.reduce((s, it) => {
-    return s + (it.quantity * it.unitPrice);
+    return s + lineBase(it);
   }, 0);
 
   const globalDiscount = globalItems.reduce((s, it) => {
-    return s + (it.quantity * it.unitPrice * (it.discountPct / 100));
+    return s + (lineBase(it) * (it.discountPct / 100));
   }, 0);
 
   const globalTotalNoTax = globalSubtotal - globalDiscount;
@@ -514,7 +509,10 @@ function NewSalesOrderContent() {
                   label="Cliente"
                   value={order.customerName || ''}
                   onChange={(val) => setOrder(prev => ({ ...prev, customerName: val }))}
-                  onSelectObj={(c) => setOrder(prev => ({ ...prev, customerName: c.name, customerDoc: c.doc, customerId: c.id }))}
+                  onSelectObj={(c) => {
+                    setOrder(prev => ({ ...prev, customerName: c.name, customerDoc: c.doc, customerId: c.id }));
+                    loadFirstPaymentTermForClient(Number(c.id));
+                  }}
                   fetchUrl={(q) => `/api/base/clients?q=${q}`}
                   placeholder="Busque por nome ou documento"
                   getLabel={(c) => c.name}
@@ -532,9 +530,13 @@ function NewSalesOrderContent() {
                   label="Condição de pagamento"
                   value={order.paymentTerms || ''}
                   onChange={(val) => setOrder(prev => ({ ...prev, paymentTerms: val }))}
-                  fetchUrl={(q) => `/api/base/payment-terms?q=${q}`}
+                  onSelectObj={(item) => {
+                    const v = item?.code != null ? `[${item.code}] ${item.description}` : String(item?.description || '');
+                    setOrder((prev) => ({ ...prev, paymentTerms: v }));
+                  }}
+                  fetchUrl={(q) => `/api/base/payment-terms?clientId=${order.customerId ? String(order.customerId) : '0'}&q=${q}`}
                   placeholder="Busque por descrição ou código"
-                  getLabel={(item) => item.description}
+                  getLabel={(item) => item?.code != null ? `[${item.code}] ${item.description}` : item.description}
                   renderOption={(item) => (
                     <div>
                       <div className="font-medium">{item.description}</div>
@@ -643,6 +645,7 @@ function NewSalesOrderContent() {
                 <button className="px-2 py-1 text-xs border rounded" onClick={() => setAddingItems(false)}>Fechar</button>
               </div>
               <div className="mt-2">
+                {searchLoading && <div className="text-xs text-gray-500">Buscando...</div>}
                 {searchResults.length === 0 && searchTerm && <div className="text-xs text-gray-500">Nenhum item encontrado.</div>}
                 <ul className="divide-y max-h-60 overflow-auto">
                   {searchResults.map((it) => (
@@ -704,16 +707,12 @@ function NewSalesOrderContent() {
             </div>
             {(() => {
               const subtotal = list.reduce((s, it) => {
-                const qty = it.quantity;
-                const price = it.unitPrice;
-                return s + (qty * price);
+                return s + lineBase(it);
               }, 0);
               
               const discountTotal = list.reduce((s, it) => {
-                const qty = it.quantity;
-                const price = it.unitPrice;
                 const discount = it.discountPct;
-                return s + (qty * price * (discount / 100));
+                return s + (lineBase(it) * (discount / 100));
               }, 0);
               
               const total = subtotal - discountTotal;

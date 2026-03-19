@@ -4,8 +4,7 @@ import { prisma } from '../../../../lib/prisma';
 // PATCH: Ajusta FKs para ON DELETE CASCADE em Postgres
 export async function PATCH() {
   try {
-    // Verificar se constraint existe
-    const check: any[] = await prisma.$queryRawUnsafe(`
+    await prisma.$queryRawUnsafe(`
       SELECT tc.constraint_name
       FROM information_schema.table_constraints tc
       WHERE tc.table_name='UserEntityModuleProgram' AND tc.constraint_type='FOREIGN KEY'

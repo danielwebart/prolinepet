@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 
-type CommercialFamily = { id: number; description: string; erpCode?: string | null };
+type CommercialFamily = { id: number; description: string; erpCode?: string | null; priceBy?: string | null };
 
 export default function CommercialFamilyPage() {
   const [items, setItems] = useState<CommercialFamily[]>([]);
@@ -13,6 +13,7 @@ export default function CommercialFamilyPage() {
   const [editId, setEditId] = useState<number | null>(null);
   const [description, setDescription] = useState<string>("");
   const [erpCode, setErpCode] = useState<string>("");
+  const [priceBy, setPriceBy] = useState<'UNIT' | 'WEIGHT'>('UNIT');
 
   const filtered = useMemo(() => items, [items]);
 
@@ -31,19 +32,20 @@ export default function CommercialFamilyPage() {
   useEffect(() => { load(); }, []);
 
   const resetForm = () => {
-    setEditId(null); setDescription(""); setErpCode("");
+    setEditId(null); setDescription(""); setErpCode(""); setPriceBy('UNIT');
   };
 
   const startEdit = (cf: CommercialFamily) => {
     setEditId(cf.id);
     setDescription(cf.description || "");
     setErpCode(cf.erpCode || "");
+    setPriceBy((String(cf.priceBy || '').toUpperCase() === 'WEIGHT' ? 'WEIGHT' : 'UNIT'));
   };
 
   const save = async () => {
     setLoading(true); setErr(null);
     try {
-      const payload: any = { description: description.trim(), erpCode: erpCode.trim() || null };
+      const payload: any = { description: description.trim(), erpCode: erpCode.trim() || null, priceBy };
       if (!payload.description) throw new Error("Descrição é obrigatória");
       let res: Response;
       if (editId) {
@@ -89,7 +91,7 @@ export default function CommercialFamilyPage() {
       </div>
 
       {/* Formulário de inclusão/edição */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
         <div>
           <label className="block text-sm text-gray-700">ID</label>
           <input value={editId ?? ''} readOnly className="border rounded px-3 py-2 w-full bg-gray-100" />
@@ -101,6 +103,31 @@ export default function CommercialFamilyPage() {
         <div>
           <label className="block text-sm text-gray-700">Código ERP</label>
           <input value={erpCode} onChange={(e) => setErpCode(e.target.value)} className="border rounded px-3 py-2 w-full" />
+        </div>
+        <div>
+          <label className="block text-sm text-gray-700">Preço Por</label>
+          <div className="flex gap-4 items-center h-[42px]">
+            <label className="inline-flex items-center gap-2 text-sm text-gray-800">
+              <input
+                type="radio"
+                name="priceBy"
+                value="UNIT"
+                checked={priceBy === 'UNIT'}
+                onChange={() => setPriceBy('UNIT')}
+              />
+              Unidade
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm text-gray-800">
+              <input
+                type="radio"
+                name="priceBy"
+                value="WEIGHT"
+                checked={priceBy === 'WEIGHT'}
+                onChange={() => setPriceBy('WEIGHT')}
+              />
+              Peso
+            </label>
+          </div>
         </div>
         <div className="flex gap-2">
           <button onClick={save} className="px-3 py-2 bg-green-600 text-white rounded">{editId ? "Salvar alterações" : "Incluir"}</button>
@@ -116,6 +143,7 @@ export default function CommercialFamilyPage() {
               <th className="text-left p-2 w-24">ID</th>
               <th className="text-left p-2">Descrição</th>
               <th className="text-left p-2">Código ERP</th>
+              <th className="text-left p-2">Preço Por</th>
               <th className="text-left p-2 w-48">Ações</th>
             </tr>
           </thead>
@@ -125,6 +153,7 @@ export default function CommercialFamilyPage() {
                 <td className="p-2">{cf.id}</td>
                 <td className="p-2">{cf.description}</td>
                 <td className="p-2">{cf.erpCode || '-'}</td>
+                <td className="p-2">{String(cf.priceBy || '').toUpperCase() === 'WEIGHT' ? 'Peso' : 'Unidade'}</td>
                 <td className="p-2">
                   <div className="flex gap-2">
                     <button onClick={() => startEdit(cf)} className="px-2 py-1 bg-yellow-600 text-white rounded">Editar</button>
@@ -134,7 +163,7 @@ export default function CommercialFamilyPage() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td className="p-3 text-gray-500" colSpan={3}>Nenhum registro encontrado.</td></tr>
+              <tr><td className="p-3 text-gray-500" colSpan={5}>Nenhum registro encontrado.</td></tr>
             )}
           </tbody>
         </table>

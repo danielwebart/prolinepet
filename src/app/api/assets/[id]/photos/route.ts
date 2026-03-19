@@ -93,7 +93,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     const filePath = path.join(process.cwd(), 'public', photo.url.replace(/^\//, ''));
     try {
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    } catch (e) {
+    } catch {
       // Continua mesmo se não conseguir apagar o arquivo
     }
   }

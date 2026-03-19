@@ -169,7 +169,7 @@ function HierarchyNode({ node, level, onRefresh, onSelect, selectedId, checkedId
       setEditing(false);
       onRefresh();
       alert('Ativo salvo com sucesso.');
-    } catch (e: any) {
+    } catch {
       alert(`Erro ao salvar ativo #${node.id}.`);
     }
   };
@@ -597,7 +597,7 @@ function MachineDetail({ rootId, items, loading, onBack, onRefresh }: { rootId: 
       setEditingRoot(false);
       onRefresh();
       alert('Ativo raiz salvo com sucesso.');
-    } catch (err) {
+    } catch {
       alert(`Erro ao salvar ativo raiz #${rootId}.`);
     }
   };
@@ -742,81 +742,6 @@ function MachineDetail({ rootId, items, loading, onBack, onRefresh }: { rootId: 
         <PhotosPanel assetId={selectedId || rootId} />
       )}
     </div>
-  );
-}
-
-function AssetRow({ item, onSaved }: { item: any; onSaved: () => void }) {
-  const [editing, setEditing] = useState(false);
-  const [data, setData] = useState({
-    name: item.name || "",
-    code: item.code || "",
-    location: item.location || "",
-    manufacturer: item.manufacturer || "",
-    model: item.model || "",
-    year: item.year ? String(item.year) : "",
-    criticality: item.criticality || "",
-  });
-
-  const save = async () => {
-    await fetch(`/api/assets/${item.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...data,
-        year: data.year ? Number(data.year) : null,
-      })
-    });
-    setEditing(false);
-    onSaved();
-  };
-
-  const remove = async () => {
-    if (!confirm('Deseja excluir este ativo?')) return;
-    await fetch(`/api/assets/${item.id}`, { method: 'DELETE' });
-    onSaved();
-  };
-
-  if (!editing) {
-    return (
-      <tr className="border-b">
-        <td className="p-2">{item.id}</td>
-        <td className="p-2">{item.name}</td>
-        <td className="p-2">{item.code}</td>
-        <td className="p-2">{item.location}</td>
-        <td className="p-2">{item.manufacturer}</td>
-        <td className="p-2">{item.model}</td>
-        <td className="p-2">{item.year}</td>
-        <td className="p-2">{item.criticality}</td>
-        <td className="p-2">
-          <button onClick={() => setEditing(true)} className="px-2 py-1 text-xs bg-blue-600 text-white rounded mr-2">Editar</button>
-          <button onClick={remove} className="px-2 py-1 text-xs bg-red-600 text-white rounded">Excluir</button>
-        </td>
-      </tr>
-    );
-  }
-
-  return (
-    <tr className="border-b bg-gray-50">
-      <td className="p-2">{item.id}</td>
-      <td className="p-2"><input className="border rounded px-2 py-1 w-full" value={data.name} onChange={(e) => setData({ ...data, name: e.target.value })} /></td>
-      <td className="p-2"><input className="border rounded px-2 py-1 w-full" value={data.code} onChange={(e) => setData({ ...data, code: e.target.value })} /></td>
-      <td className="p-2"><input className="border rounded px-2 py-1 w-full" value={data.location} onChange={(e) => setData({ ...data, location: e.target.value })} /></td>
-      <td className="p-2"><input className="border rounded px-2 py-1 w-full" value={data.manufacturer} onChange={(e) => setData({ ...data, manufacturer: e.target.value })} /></td>
-      <td className="p-2"><input className="border rounded px-2 py-1 w-full" value={data.model} onChange={(e) => setData({ ...data, model: e.target.value })} /></td>
-      <td className="p-2"><input className="border rounded px-2 py-1 w-full" type="number" value={data.year} onChange={(e) => setData({ ...data, year: e.target.value })} /></td>
-      <td className="p-2">
-        <select className="border rounded px-2 py-1 w-full" value={data.criticality} onChange={(e) => setData({ ...data, criticality: e.target.value })}>
-          <option value="">-</option>
-          <option value="LOW">Baixa</option>
-          <option value="MEDIUM">Média</option>
-          <option value="HIGH">Alta</option>
-        </select>
-      </td>
-      <td className="p-2">
-        <button onClick={save} className="px-2 py-1 text-xs bg-green-600 text-white rounded mr-2">Salvar</button>
-        <button onClick={() => setEditing(false)} className="px-2 py-1 text-xs bg-gray-300 rounded">Cancelar</button>
-      </td>
-    </tr>
   );
 }
 

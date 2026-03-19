@@ -13,7 +13,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
       orderBy: { issueDate: 'desc' }
     });
     return NextResponse.json(invoices);
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Erro ao buscar faturas' }, { status: 500 });
   }
 }

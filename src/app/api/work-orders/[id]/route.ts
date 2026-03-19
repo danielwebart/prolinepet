@@ -117,7 +117,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
   // No action: generic update handler for UI edits and Kanban status moves
   const data = body;
-  let updateData: any = { ...data };
+  const updateData: any = { ...data };
 
   // Normalizar tasks: aceitar array de strings ou string simples
   if (Object.prototype.hasOwnProperty.call(updateData, 'tasks')) {

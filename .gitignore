@@ -27,3 +27,5 @@ prisma/.env
 # Build artifacts
 dist/
 out/
+*.tsbuildinfo
+prisma/*.part

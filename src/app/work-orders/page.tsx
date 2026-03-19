@@ -315,7 +315,7 @@ function WorkOrdersInner() {
                     setForm({ title: "", assetId: "", description: "", materials: "", scheduledAt: "", sector: "", maintenanceType: "", assetCondition: "", personnelCount: "", estimatedDurationMinutes: "", tasks: "", assignedUserId: "", recurrence: "" });
                     setCreating(false);
                     load();
-                  } catch (e) {
+                  } catch {
                     setCreateError('Erro de rede ao criar OS');
                   }
                 }}

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 // Rebuild trigger: Fix webpack runtime error
 import { prisma } from '../../../lib/prisma';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 function normalizeDoc(doc: string): string {
   return (doc || '').replace(/\D+/g, '');

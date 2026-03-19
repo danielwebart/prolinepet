@@ -165,23 +165,12 @@ export default function BaseItemMaintenancePage() {
     }
   };
 
-  const removeItem = async (id: number) => {
-    if (!confirm("Excluir este item?")) return;
-    try {
-      const res = await fetch(`/api/items/${id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error((data as any)?.error || `Erro ${res.status}`);
-      await load();
-    } catch (e: any) {
-      alert(e?.message || String(e));
-    }
-  };
-
   return (
     <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-semibold">Manutenção de Item</h1>
           </div>
+          {error && <div className="text-sm text-red-600">{error}</div>}
 
           {/* Barra de busca e ação */}
           <div className="flex items-center gap-2">

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 // Dev utility: ensures the default entity, users and all ACL links exist.
 // Idempotent: safely creates missing records and fixes mismatched program-module associations.
@@ -98,7 +98,7 @@ export async function POST() {
       });
     };
     const tiUE = await linkUserEntity(ti.id, entity.id);
-    const tecUE = await linkUserEntity(tec.id, entity.id);
+    await linkUserEntity(tec.id, entity.id);
 
     // 7) Grant all modules to TI (allowed=1)
     for (const m of modules) {

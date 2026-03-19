@@ -1,6 +1,26 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../../lib/prisma';
-import { Prisma } from '@prisma/client';
+
+function computeWeightKgFromFields(it: { width?: number | null; length?: number | null; grammage?: number | null; quantity?: number | null }): number {
+  const w = Number(it.width ?? 0);
+  const l = Number(it.length ?? 0);
+  const g = Number(it.grammage ?? 0);
+  const q = Number(it.quantity ?? 0);
+  if (w > 0 && l > 0 && g > 0 && q > 0) {
+    const areaM2 = (l / 1000) * (w / 1000);
+    const weightKg = (areaM2 * g * q) / 1000;
+    return weightKg;
+  }
+  return 0;
+}
+
+function lineBase(it: { quantity?: number | null; unitPrice?: number | null; width?: number | null; length?: number | null; grammage?: number | null }, priceBy?: string | null): number {
+  const qty = Number(it.quantity ?? 0);
+  const price = Number(it.unitPrice ?? 0);
+  const pb = String(priceBy || '').trim().toUpperCase();
+  if (pb === 'WEIGHT' || pb === 'PESO') return computeWeightKgFromFields(it) * price;
+  return qty * price;
+}
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -38,15 +58,37 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const keys = Object.keys(allowed);
     if (keys.length === 0) return NextResponse.json({ error: 'Nada para atualizar' }, { status: 400 });
 
-    const assignments = keys.map((k) => Prisma.sql`"${Prisma.raw(k)}" = ${allowed[k]}`);
-    await prisma.$executeRaw(
-      Prisma.sql`UPDATE "SalesOrderItem" SET ${Prisma.join(assignments, ', ')} , "lineTotal" = ("quantity" * "unitPrice" * (1 - COALESCE("discountPct",0)/100)) WHERE id = ${id}`
-    );
+    const updated = await prisma.$transaction(async (tx) => {
+      const after = await tx.salesOrderItem.update({
+        where: { id },
+        data: allowed,
+      });
+      const invId = after.inventoryItemId ? Number(after.inventoryItemId) : null;
+      let priceBy: string | null = null;
+      let commercialFamilyId: number | null = null;
+      if (invId) {
+        const rows: any[] = await tx.$queryRawUnsafe(`
+          SELECT inv."commercialFamilyId" AS "commercialFamilyId", cf."priceBy" AS "priceBy"
+          FROM "InventoryItem" inv
+          LEFT JOIN "CommercialFamily" cf ON cf."id" = inv."commercialFamilyId"
+          WHERE inv."id" = ${invId}
+          LIMIT 1
+        `);
+        const r = rows[0];
+        commercialFamilyId = r?.commercialFamilyId != null ? Number(r.commercialFamilyId) : null;
+        priceBy = r?.priceBy != null ? String(r.priceBy) : null;
+      }
 
-    const row: any[] = await prisma.$queryRaw(
-      Prisma.sql`SELECT i.*, inv."commercialFamilyId" FROM "SalesOrderItem" i LEFT JOIN "InventoryItem" inv ON inv.id=i."inventoryItemId" WHERE i.id=${id}`
-    );
-    return NextResponse.json(row[0] ?? { ok: true });
+      const base = lineBase(after, priceBy);
+      const disc = Number(after.discountPct ?? 0);
+      const computedLineTotal = base * (1 - disc / 100);
+      const saved = await tx.salesOrderItem.update({
+        where: { id },
+        data: { lineTotal: computedLineTotal },
+      });
+      return { ...saved, commercialFamilyId };
+    });
+    return NextResponse.json(updated);
   } catch (err: any) {
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
   }
@@ -75,8 +117,43 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
         where: { orderId: item.orderId }
       });
 
-      const subtotal = remainingItems.reduce((acc, it) => acc + (it.quantity * it.unitPrice), 0);
-      const discountTotal = remainingItems.reduce((acc, it) => acc + (it.quantity * it.unitPrice * (it.discountPct / 100)), 0);
+      const invIds = remainingItems
+        .map((it) => (it.inventoryItemId ? Number(it.inventoryItemId) : null))
+        .filter((n): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0);
+      const priceByMap = new Map<number, string | null>();
+      if (invIds.length > 0) {
+        const unique = Array.from(new Set(invIds));
+        const inList = unique.join(',');
+        const rows: any[] = await tx.$queryRawUnsafe(`
+          SELECT inv."id" AS "inventoryItemId", cf."priceBy" AS "priceBy"
+          FROM "InventoryItem" inv
+          LEFT JOIN "CommercialFamily" cf ON cf."id" = inv."commercialFamilyId"
+          WHERE inv."id" IN (${inList})
+        `);
+        for (const r of rows) {
+          const iid = Number(r.inventoryItemId);
+          if (Number.isFinite(iid) && iid > 0) priceByMap.set(iid, r.priceBy != null ? String(r.priceBy) : null);
+        }
+      }
+
+      for (const it of remainingItems) {
+        const pb = it.inventoryItemId ? (priceByMap.get(Number(it.inventoryItemId)) ?? null) : null;
+        const base = lineBase(it, pb);
+        const disc = Number(it.discountPct ?? 0);
+        const computedLineTotal = base * (1 - disc / 100);
+        if (Number(it.lineTotal ?? 0) !== computedLineTotal) {
+          await tx.salesOrderItem.update({ where: { id: it.id }, data: { lineTotal: computedLineTotal } });
+        }
+      }
+
+      const subtotal = remainingItems.reduce((acc, it) => {
+        const pb = it.inventoryItemId ? (priceByMap.get(Number(it.inventoryItemId)) ?? null) : null;
+        return acc + lineBase(it, pb);
+      }, 0);
+      const discountTotal = remainingItems.reduce((acc, it) => {
+        const pb = it.inventoryItemId ? (priceByMap.get(Number(it.inventoryItemId)) ?? null) : null;
+        return acc + (lineBase(it, pb) * (Number(it.discountPct ?? 0) / 100));
+      }, 0);
       const total = subtotal - discountTotal;
 
       await tx.salesOrder.update({

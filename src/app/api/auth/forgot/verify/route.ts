@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { verifyResetCode, clearResetCode } from '../../../../../lib/resetStore';
+import { verifyResetCode } from '../../../../../lib/resetStore';
 
 export async function POST(req: Request) {
   try {
@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     // clearResetCode(email);
 
     return NextResponse.json({ ok: true, message: 'Código verificado' });
-  } catch (err) {
+  } catch {
     return NextResponse.json({ message: 'Erro ao verificar código' }, { status: 500 });
   }
 }

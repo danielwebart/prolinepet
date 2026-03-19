@@ -1,6 +1,6 @@
 "use client";
 // Rebuild trigger: Fix webpack runtime error
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 type Client = { 
@@ -13,11 +13,15 @@ type Client = {
   bairro?: string | null; 
   cidade?: string | null; 
   estado?: string | null;
+  paymentTermId?: number | null;
+  paymentTermCode?: number | null;
+  paymentTermDescription?: string | null;
   creditLimit?: number;
   availableLimit?: number;
   titlesDue?: number;
   titlesOverdue?: number;
 };
+type PaymentTerm = { id: number; code: number | null; description: string; installments?: number };
 type OrderItem = { id: number; sku?: string | null; name: string; unit?: string | null; quantity: number; unitPrice: number; discountPct: number };
 type SalesOrder = { 
   id: number; 
@@ -105,12 +109,6 @@ const SendIcon = () => (
     <path d="M22 2 15 22l-4-9-9-4Z" strokeWidth="1.5" />
   </svg>
 );
-const ReturnIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
-    <path d="M9 7 4 12l5 5" strokeWidth="1.5" />
-    <path d="M4 12h10a5 5 0 0 1 0 10h-3" strokeWidth="1.5" />
-  </svg>
-);
 const TrashIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-4 h-4">
     <path d="M3 6h18" strokeWidth="1.5" />
@@ -123,12 +121,14 @@ export default function ClientDetailsPage() {
   const params = useParams() as any;
   const id = Number(params.id);
   const [client, setClient] = useState<Client | null>(null);
+  const [paymentTerms, setPaymentTerms] = useState<PaymentTerm[]>([]);
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const [linkedItems, setLinkedItems] = useState<LinkedItem[]>([]);
   const [expandItems, setExpandItems] = useState(false);
+  const [expandPaymentTerms, setExpandPaymentTerms] = useState(false);
   const [showCart, setShowCart] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [selected, setSelected] = useState<SalesOrder | null>(null);
@@ -154,6 +154,17 @@ export default function ClientDetailsPage() {
         const arr: Client[] = await res.json();
         const c = (arr || []).find((x) => Number(x.id) === id) || null;
         setClient(c);
+        try {
+          const ptRes = await fetch(`/api/base/payment-terms?clientId=${encodeURIComponent(String(id))}`, { cache: 'no-store' });
+          if (ptRes.ok) {
+            const ptData: PaymentTerm[] = await ptRes.json();
+            setPaymentTerms(Array.isArray(ptData) ? ptData : []);
+          } else {
+            setPaymentTerms([]);
+          }
+        } catch {
+          setPaymentTerms([]);
+        }
         if (c?.doc) {
           const ro = await fetch(`/api/sales/orders?doc=${encodeURIComponent(c.doc)}`, { cache: 'no-store' });
           if (ro.ok) {
@@ -463,6 +474,47 @@ export default function ClientDetailsPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="border rounded bg-white">
+        <div className="flex items-center justify-between p-2">
+          <div className="text-xs text-gray-600">Condições vinculadas ao cliente</div>
+          <button
+            onClick={() => setExpandPaymentTerms(!expandPaymentTerms)}
+            className="text-gray-500 hover:text-gray-700 p-1"
+            title={expandPaymentTerms ? "Recolher" : "Expandir"}
+          >
+            {expandPaymentTerms ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            )}
+          </button>
+        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="p-2 text-left">Código</th>
+              <th className="p-2 text-left">Descrição</th>
+              <th className="p-2 text-left">Parcelas</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(expandPaymentTerms ? paymentTerms : []).map((pt) => (
+              <tr key={pt.id} className="border-t">
+                <td className="p-2">{pt.code != null ? pt.code : '-'}</td>
+                <td className="p-2">{pt.description}</td>
+                <td className="p-2">{pt.installments != null ? pt.installments : '-'}</td>
+              </tr>
+            ))}
+            {paymentTerms.length === 0 && (
+              <tr><td className="p-3 text-gray-500" colSpan={3}>Sem condições</td></tr>
+            )}
+            {!expandPaymentTerms && paymentTerms.length > 0 && (
+              <tr><td className="p-2 text-center text-xs text-gray-500 italic" colSpan={3}>{paymentTerms.length} condições ocultas...</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       <div className="border rounded bg-white">

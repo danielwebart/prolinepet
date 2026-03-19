@@ -11,7 +11,13 @@ type Client = {
   bairro?: string;
   cidade?: string;
   estado?: string;
+  paymentTermId?: number | null;
+  paymentTermCode?: number | null;
+  paymentTermDescription?: string | null;
+  paymentTermIds?: number[];
 };
+
+type PaymentTerm = { id: number; code: number | null; description: string; installments?: number };
 
 function maskDoc(doc: string): string {
   const d = (doc || "").replace(/\D+/g, "");
@@ -31,9 +37,16 @@ export default function ClientsPage() {
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [showAdd, setShowAdd] = useState(false);
-  const [add, setAdd] = useState<Client>({ id: 0, doc: "", name: "", cep: "", logradouro: "", numero: "", bairro: "", cidade: "", estado: "" });
+  const [add, setAdd] = useState<Client>({ id: 0, doc: "", name: "", cep: "", logradouro: "", numero: "", bairro: "", cidade: "", estado: "", paymentTermId: null });
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState<Client | null>(null);
+  const [paymentTerms, setPaymentTerms] = useState<PaymentTerm[]>([]);
+  const [ptQuery, setPtQuery] = useState<string>("");
+  const [ptOpts, setPtOpts] = useState<PaymentTerm[]>([]);
+  const [ptOpen, setPtOpen] = useState(false);
+  const [ptLoading, setPtLoading] = useState(false);
+  const ptWrapperRef = React.useRef<HTMLDivElement>(null);
+  const [linkedPaymentTerms, setLinkedPaymentTerms] = useState<PaymentTerm[]>([]);
 
   const load = async () => {
     setLoading(true);
@@ -52,13 +65,107 @@ export default function ClientsPage() {
 
   useEffect(() => { load(); }, []);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/base/payment-terms');
+        const data = await res.json();
+        setPaymentTerms(Array.isArray(data) ? data : []);
+      } catch {
+        setPaymentTerms([]);
+      }
+    })();
+  }, []);
+
+  const paymentTermById = useMemo(() => {
+    const m = new Map<number, PaymentTerm>();
+    for (const pt of paymentTerms) m.set(pt.id, pt);
+    return m;
+  }, [paymentTerms]);
+
+  useEffect(() => {
+    if (!showAdd) return;
+    setPtQuery('');
+    setPtOpts([]);
+    setPtOpen(false);
+    (async () => {
+      if (editingId) {
+        try {
+          const res = await fetch(`/api/base/payment-terms?clientId=${editingId}`);
+          const data = await res.json();
+          const list: PaymentTerm[] = Array.isArray(data) ? data : [];
+          if (list.length > 0) {
+            setLinkedPaymentTerms(list);
+            setAdd((prev) => ({
+              ...prev,
+              paymentTermId: list[0]?.id ?? null,
+              paymentTermCode: list[0]?.code ?? null,
+              paymentTermDescription: list[0]?.description ?? null,
+            }));
+            return;
+          }
+        } catch {}
+      }
+
+      const fallback = add.paymentTermId ? paymentTermById.get(add.paymentTermId) : null;
+      const list = fallback ? [fallback] : [];
+      setLinkedPaymentTerms(list);
+      setAdd((prev) => ({
+        ...prev,
+        paymentTermId: list[0]?.id ?? null,
+        paymentTermCode: list[0]?.code ?? null,
+        paymentTermDescription: list[0]?.description ?? null,
+      }));
+    })();
+  }, [showAdd, editingId, paymentTermById]);
+
+  useEffect(() => {
+    const handler = (event: MouseEvent) => {
+      if (ptWrapperRef.current && !ptWrapperRef.current.contains(event.target as Node)) setPtOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  useEffect(() => {
+    if (!showAdd) return;
+    const term = (ptQuery || '').trim();
+    if (!term) {
+      setPtOpts([]);
+      setPtOpen(false);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setPtLoading(true);
+      try {
+        const res = await fetch(`/api/base/payment-terms?q=${encodeURIComponent(term)}`);
+        const data = await res.json();
+        setPtOpts(Array.isArray(data) ? data.slice(0, 20) : []);
+        setPtOpen(true);
+      } catch {
+        setPtOpts([]);
+      } finally {
+        setPtLoading(false);
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [ptQuery, showAdd]);
+
   const onAdd = async () => {
     try {
       const method = editingId ? 'PATCH' : 'POST';
       const url = editingId ? `/api/base/clients/${editingId}` : '/api/base/clients';
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(add) });
+      const payload: Client = {
+        ...add,
+        paymentTermId: linkedPaymentTerms[0]?.id ?? null,
+        paymentTermCode: linkedPaymentTerms[0]?.code ?? null,
+        paymentTermDescription: linkedPaymentTerms[0]?.description ?? null,
+        paymentTermIds: linkedPaymentTerms.map((pt) => pt.id),
+      };
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error(editingId ? 'Falha ao salvar alterações' : 'Falha ao incluir cliente');
-      setAdd({ id: 0, doc: "", name: "", cep: "", logradouro: "", numero: "", bairro: "", cidade: "", estado: "" });
+      setAdd({ id: 0, doc: "", name: "", cep: "", logradouro: "", numero: "", bairro: "", cidade: "", estado: "", paymentTermId: null });
+      setLinkedPaymentTerms([]);
       setEditingId(null);
       setShowAdd(false);
       await load();
@@ -147,7 +254,7 @@ export default function ClientsPage() {
               const next = !s;
               if (next) {
                 setEditingId(null);
-                setAdd({ id: 0, doc: "", name: "", cep: "", logradouro: "", numero: "", bairro: "", cidade: "", estado: "" });
+                setAdd({ id: 0, doc: "", name: "", cep: "", logradouro: "", numero: "", bairro: "", cidade: "", estado: "", paymentTermId: null });
               }
               return next;
             });
@@ -160,47 +267,136 @@ export default function ClientsPage() {
 
       {showAdd && (
         <div className="border rounded p-3 space-y-2 bg-gray-50">
-          <div className="flex gap-2 items-center">
-            <div className="flex flex-col">
-              <label className="text-sm">Cnpj/Cpf</label>
-              <input value={add.doc || ''} onChange={(e) => setAdd((prev) => ({ ...prev, doc: e.target.value }))} placeholder="Somente números" className="border px-3 py-2 rounded w-64" />
-              <span className="text-xs text-gray-500">{maskDoc(add.doc || '')}</span>
+          <div className="grid grid-cols-1 gap-2">
+            <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+              <label className="text-sm text-gray-700">Cnpj/Cpf</label>
+              <div className="flex items-center gap-2">
+                <div className="flex flex-col flex-1 min-w-0">
+                  <input value={add.doc || ''} onChange={(e) => setAdd((prev) => ({ ...prev, doc: e.target.value }))} placeholder="Somente números" className="border px-3 py-2 rounded w-full" />
+                  <span className="text-xs text-gray-500">{maskDoc(add.doc || '')}</span>
+                </div>
+                <button onClick={lookupDoc} className="px-3 py-2 bg-gray-800 text-white rounded">Buscar</button>
+              </div>
             </div>
-            <button onClick={lookupDoc} className="px-3 py-2 bg-gray-800 text-white rounded">Buscar</button>
-          </div>
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <label className="text-sm">Nome</label>
+
+            <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+              <label className="text-sm text-gray-700">Nome</label>
               <input value={add.name || ''} onChange={(e) => setAdd((prev) => ({ ...prev, name: e.target.value }))} className="border px-3 py-2 rounded w-full" />
             </div>
-          </div>
-          <div className="flex gap-2 items-end">
-            <div>
-              <label className="text-sm">CEP</label>
-              <input value={add.cep || ''} onChange={(e) => setAdd((prev) => ({ ...prev, cep: e.target.value }))} className="border px-3 py-2 rounded w-32" />
+
+            <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+              <label className="text-sm text-gray-700">Condições de pagamento</label>
+              <div ref={ptWrapperRef} className="relative">
+                <input
+                  value={ptQuery}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setPtQuery(v);
+                    setPtOpen(true);
+                  }}
+                  onFocus={() => {
+                    if (ptOpts.length > 0) setPtOpen(true);
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => setPtOpen(false), 150);
+                  }}
+                  placeholder="Digite o código ou descrição e selecione"
+                  className="border px-3 py-2 rounded w-full"
+                />
+                {ptOpen && (ptLoading || ptOpts.length > 0) && (
+                  <div className="absolute z-20 mt-1 w-full bg-white border rounded shadow max-h-56 overflow-auto">
+                    {ptLoading && <div className="px-3 py-2 text-sm text-gray-500">Buscando...</div>}
+                    {!ptLoading && ptOpts.map((pt) => (
+                      <div
+                        key={pt.id}
+                        className="px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setLinkedPaymentTerms((prev) => {
+                            if (prev.some((x) => x.id === pt.id)) return prev;
+                            const next = [...prev, pt];
+                            setAdd((cPrev) => ({
+                              ...cPrev,
+                              paymentTermId: next[0]?.id ?? null,
+                              paymentTermCode: next[0]?.code ?? null,
+                              paymentTermDescription: next[0]?.description ?? null,
+                            }));
+                            return next;
+                          });
+                          setPtQuery('');
+                          setPtOpen(false);
+                        }}
+                      >
+                        <div className="text-sm font-medium">{pt.description}</div>
+                        <div className="text-xs text-gray-500">
+                          Cód: {pt.code ?? '-'}{pt.installments != null ? ` • Parcelas: ${pt.installments}` : ''}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {linkedPaymentTerms.length > 0 && (
+                  <div className="mt-2 border rounded bg-white overflow-hidden">
+                    {linkedPaymentTerms.map((pt) => (
+                      <div key={pt.id} className="px-3 py-2 border-t first:border-t-0 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium truncate">{pt.description}</div>
+                          <div className="text-xs text-gray-500">Cód: {pt.code ?? '-'}</div>
+                        </div>
+                        <button
+                          type="button"
+                          className="px-2 py-1 border rounded text-sm bg-white hover:bg-gray-50"
+                          onClick={() => {
+                            setLinkedPaymentTerms((prev) => {
+                              const next = prev.filter((x) => x.id !== pt.id);
+                              setAdd((cPrev) => ({
+                                ...cPrev,
+                                paymentTermId: next[0]?.id ?? null,
+                                paymentTermCode: next[0]?.code ?? null,
+                                paymentTermDescription: next[0]?.description ?? null,
+                              }));
+                              return next;
+                            });
+                          }}
+                        >
+                          Remover
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <button onClick={lookupCep} className="px-3 py-2 bg-gray-800 text-white rounded">Buscar</button>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-sm">Logradouro</label>
-              <input value={add.logradouro || ''} onChange={(e) => setAdd((prev) => ({ ...prev, logradouro: e.target.value }))} className="border px-3 py-2 rounded w-full" />
+
+            <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+              <label className="text-sm text-gray-700">CEP</label>
+              <div className="flex items-center gap-2">
+                <input value={add.cep || ''} onChange={(e) => setAdd((prev) => ({ ...prev, cep: e.target.value }))} className="border px-3 py-2 rounded w-full" />
+                <button onClick={lookupCep} className="px-3 py-2 bg-gray-800 text-white rounded">Buscar</button>
+              </div>
             </div>
-            <div>
-              <label className="text-sm">Numero</label>
-              <input value={add.numero || ''} onChange={(e) => setAdd((prev) => ({ ...prev, numero: e.target.value }))} className="border px-3 py-2 rounded w-full" />
-            </div>
-            <div>
-              <label className="text-sm">Bairro</label>
-              <input value={add.bairro || ''} onChange={(e) => setAdd((prev) => ({ ...prev, bairro: e.target.value }))} className="border px-3 py-2 rounded w-full" />
-            </div>
-            <div>
-              <label className="text-sm">Cidade</label>
-              <input value={add.cidade || ''} onChange={(e) => setAdd((prev) => ({ ...prev, cidade: e.target.value }))} className="border px-3 py-2 rounded w-full" />
-            </div>
-            <div>
-              <label className="text-sm">Estado</label>
-              <input value={add.estado || ''} onChange={(e) => setAdd((prev) => ({ ...prev, estado: e.target.value }))} className="border px-3 py-2 rounded w-full" />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                <label className="text-sm text-gray-700">Logradouro</label>
+                <input value={add.logradouro || ''} onChange={(e) => setAdd((prev) => ({ ...prev, logradouro: e.target.value }))} className="border px-3 py-2 rounded w-full" />
+              </div>
+              <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                <label className="text-sm text-gray-700">Numero</label>
+                <input value={add.numero || ''} onChange={(e) => setAdd((prev) => ({ ...prev, numero: e.target.value }))} className="border px-3 py-2 rounded w-full" />
+              </div>
+              <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                <label className="text-sm text-gray-700">Bairro</label>
+                <input value={add.bairro || ''} onChange={(e) => setAdd((prev) => ({ ...prev, bairro: e.target.value }))} className="border px-3 py-2 rounded w-full" />
+              </div>
+              <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                <label className="text-sm text-gray-700">Cidade</label>
+                <input value={add.cidade || ''} onChange={(e) => setAdd((prev) => ({ ...prev, cidade: e.target.value }))} className="border px-3 py-2 rounded w-full" />
+              </div>
+              <div className="grid grid-cols-[160px_1fr] items-center gap-3">
+                <label className="text-sm text-gray-700">Estado</label>
+                <input value={add.estado || ''} onChange={(e) => setAdd((prev) => ({ ...prev, estado: e.target.value }))} className="border px-3 py-2 rounded w-full" />
+              </div>
             </div>
           </div>
           <div className="flex gap-2">

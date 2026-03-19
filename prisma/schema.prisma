@@ -27,6 +27,24 @@ model User {
   userClientReps     UserClientRep[]
   userEntities       UserEntity[]
   assignedWorkOrders WorkOrder[]
+
+  // Gestão FinTI Relations
+  gestaoFintiCategoriasCriadas       GestaoFintiCategoria[]   @relation("GestaoFintiCategoriaCriadoPor")
+  gestaoFintiCategoriasAtualizadas   GestaoFintiCategoria[]   @relation("GestaoFintiCategoriaAtualizadoPor")
+  gestaoFintiFornecedoresCriados     GestaoFintiFornecedor[]  @relation("GestaoFintiFornecedorCriadoPor")
+  gestaoFintiFornecedoresAtualizados GestaoFintiFornecedor[]  @relation("GestaoFintiFornecedorAtualizadoPor")
+  gestaoFintiCentrosCustoCriados     GestaoFintiCentroCusto[] @relation("GestaoFintiCentroCustoCriadoPor")
+  gestaoFintiCentrosCustoAtualizados GestaoFintiCentroCusto[] @relation("GestaoFintiCentroCustoAtualizadoPor")
+  gestaoFintiOrcamentosCriados       GestaoFintiOrcamento[]   @relation("GestaoFintiOrcamentoCriadoPor")
+  gestaoFintiOrcamentosAtualizados   GestaoFintiOrcamento[]   @relation("GestaoFintiOrcamentoAtualizadoPor")
+  gestaoFintiDespesasCriadas         GestaoFintiDespesa[]     @relation("GestaoFintiDespesaCriadoPor")
+  gestaoFintiDespesasAtualizadas     GestaoFintiDespesa[]     @relation("GestaoFintiDespesaAtualizadoPor")
+  gestaoFintiParcelasCriadas         GestaoFintiParcela[]     @relation("GestaoFintiParcelaCriadoPor")
+  gestaoFintiParcelasAtualizadas     GestaoFintiParcela[]     @relation("GestaoFintiParcelaAtualizadoPor")
+  gestaoFintiAtivosCriados           GestaoFintiAtivo[]       @relation("GestaoFintiAtivoCriadoPor")
+  gestaoFintiAtivosAtualizados       GestaoFintiAtivo[]       @relation("GestaoFintiAtivoAtualizadoPor")
+  gestaoFintiConfiguracoesCriadas    GestaoFintiConfiguracao[] @relation("GestaoFintiConfiguracaoCriadoPor")
+  gestaoFintiConfiguracoesAtualizadas GestaoFintiConfiguracao[] @relation("GestaoFintiConfiguracaoAtualizadoPor")
 }
 
 model Asset {
@@ -49,28 +67,28 @@ model Asset {
 }
 
 model InventoryItem {
-  id              Int              @id @default(autoincrement())
-  name            String
-  sku             String?          @unique
-  quantity        Int              @default(0)
-  unit            String?
-  minStock        Int              @default(0)
-  width           Int?
-  length          Int?
-  grammage        Int?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  salesOrderItems SalesOrderItem[]
+  id                 Int               @id @default(autoincrement())
+  name               String
+  sku                String?           @unique
+  quantity           Int               @default(0)
+  unit               String?
+  minStock           Int               @default(0)
+  width              Int?
+  length             Int?
+  grammage           Int?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  salesOrderItems    SalesOrderItem[]
   // Relação opcional com Família Comercial
   commercialFamilyId Int?
   commercialFamily   CommercialFamily? @relation(fields: [commercialFamilyId], references: [id])
 
   // Disponibilidade por entidade/módulo
-  entityModuleItems  EntityModuleItem[]
+  entityModuleItems EntityModuleItem[]
 
   // Vínculos por cliente e carrinho
-  clientItems       ClientItem[]
-  clientCartItems   ClientCartItem[]
+  clientItems     ClientItem[]
+  clientCartItems ClientCartItem[]
 }
 
 model Attachment {
@@ -169,12 +187,12 @@ model Program {
 }
 
 model EntityModule {
-  id       Int                   @id @default(autoincrement())
-  entityId Int
-  moduleId Int
-  entity   Entity                @relation(fields: [entityId], references: [id])
-  module   Module                @relation(fields: [moduleId], references: [id])
-  programs EntityModuleProgram[]
+  id        Int                   @id @default(autoincrement())
+  entityId  Int
+  moduleId  Int
+  entity    Entity                @relation(fields: [entityId], references: [id])
+  module    Module                @relation(fields: [moduleId], references: [id])
+  programs  EntityModuleProgram[]
   // Itens liberados para este EntityModule
   itemLinks EntityModuleItem[]
 
@@ -227,109 +245,109 @@ model UserEntityModuleProgram {
 }
 
 model SalesOrder {
-  id            Int              @id @default(autoincrement())
-  code          String           @unique
-  status        String           @default("OPEN")
-  orderDate     DateTime         @default(now())
-  customerName  String
-  customerDoc   String?
-  paymentTerms  String?
-  carrier       String?
-  deliveryDate  DateTime?
-  notes         String?
-  entityId      Int?
-  entity        Entity?          @relation(fields: [entityId], references: [id])
-  createdById   Int?
-  subtotal      Float            @default(0)
-  discountTotal Float            @default(0)
-  total         Float            @default(0)
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  createdBy     User?            @relation(fields: [createdById], references: [id])
-  items         SalesOrderItem[]
-  statusHistory SalesOrderStatusHistory[]
-  clientId      Int?
-  client          Client?          @relation(fields: [clientId], references: [id])
-  lastTaxSimulation DateTime?
-  totalWithTax    Float            @default(0)
-  totalInvoiced   Float            @default(0)
-  erpOrderNumber  String?
+  id                     Int                       @id @default(autoincrement())
+  code                   String                    @unique
+  status                 String                    @default("OPEN")
+  orderDate              DateTime                  @default(now())
+  customerName           String
+  customerDoc            String?
+  paymentTerms           String?
+  carrier                String?
+  deliveryDate           DateTime?
+  notes                  String?
+  entityId               Int?
+  entity                 Entity?                   @relation(fields: [entityId], references: [id])
+  createdById            Int?
+  subtotal               Float                     @default(0)
+  discountTotal          Float                     @default(0)
+  total                  Float                     @default(0)
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  createdBy              User?                     @relation(fields: [createdById], references: [id])
+  items                  SalesOrderItem[]
+  statusHistory          SalesOrderStatusHistory[]
+  clientId               Int?
+  client                 Client?                   @relation(fields: [clientId], references: [id])
+  lastTaxSimulation      DateTime?
+  totalWithTax           Float                     @default(0)
+  totalInvoiced          Float                     @default(0)
+  erpOrderNumber         String?
   triangularCustomerName String?
   triangularCustomerDoc  String?
-  invoices        SalesOrderInvoice[]
+  invoices               SalesOrderInvoice[]
 }
 
 model SalesOrderInvoice {
-  id             Int        @id @default(autoincrement())
-  orderId        Int
-  invoiceNumber  String
-  issueDate      DateTime
-  totalValue     Float
-  totalWeight    Float
-  danfeFileName  String?
-  xmlFileName    String?
-  createdAt      DateTime   @default(now())
-  
-  order          SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  
+  id            Int      @id @default(autoincrement())
+  orderId       Int
+  invoiceNumber String
+  issueDate     DateTime
+  totalValue    Float
+  totalWeight   Float
+  danfeFileName String?
+  xmlFileName   String?
+  createdAt     DateTime @default(now())
+
+  order SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
   @@index([orderId])
 }
 
 model SalesOrderStatusHistory {
-  id         Int       @id @default(autoincrement())
-  orderId    Int
-  status     String
-  changedAt  DateTime  @default(now())
-  messages   Json      @default("[]")
-  order      SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id        Int        @id @default(autoincrement())
+  orderId   Int
+  status    String
+  changedAt DateTime   @default(now())
+  messages  Json       @default("[]")
+  order     SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
   @@index([changedAt])
 }
 
 model SalesOrderItem {
-  id              Int            @id @default(autoincrement())
-  orderId         Int
-  inventoryItemId Int?
-  sku             String?
-  name            String
-  quantity        Int            @default(1)
-  unit            String?
-  unitPrice       Float          @default(0)
-  discountPct     Float          @default(0)
-  lineTotal       Float          @default(0)
+  id                    Int            @id @default(autoincrement())
+  orderId               Int
+  inventoryItemId       Int?
+  sku                   String?
+  name                  String
+  quantity              Int            @default(1)
+  unit                  String?
+  unitPrice             Float          @default(0)
+  discountPct           Float          @default(0)
+  lineTotal             Float          @default(0)
   // Medidas e características
-  width           Int?
-  length          Int?
-  grammage        Int?
-  diameter        Int?
-  tube            Int?
-  weightKg        Int?
-  creases         Json?
-  clientOrderNumber String?
+  width                 Int?
+  length                Int?
+  grammage              Int?
+  diameter              Int?
+  tube                  Int?
+  weightKg              Int?
+  creases               Json?
+  clientOrderNumber     String?
   clientOrderItemNumber Int?
-  itemDeliveryDate DateTime?
-  internalResin   Boolean?       @default(false)
-  externalResin   Boolean?       @default(false)
-  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
-  order           SalesOrder     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  itemDeliveryDate      DateTime?
+  internalResin         Boolean?       @default(false)
+  externalResin         Boolean?       @default(false)
+  inventoryItem         InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  order                 SalesOrder     @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
 
 // Ligação de disponibilidade de Item por EntityModule
 model EntityModuleItem {
-  id              Int            @id @default(autoincrement())
+  id              Int           @id @default(autoincrement())
   entityModuleId  Int
   inventoryItemId Int
-  allowed         Boolean        @default(true)
-  entityModule    EntityModule   @relation(fields: [entityModuleId], references: [id])
-  inventoryItem   InventoryItem  @relation(fields: [inventoryItemId], references: [id])
+  allowed         Boolean       @default(true)
+  entityModule    EntityModule  @relation(fields: [entityModuleId], references: [id])
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
 
   @@unique([entityModuleId, inventoryItemId])
 }
 
 model Client {
-  id         Int             @id @default(autoincrement())
-  doc        String?         @unique
+  id         Int     @id @default(autoincrement())
+  doc        String? @unique
   name       String
   cep        String?
   logradouro String?
@@ -337,50 +355,69 @@ model Client {
   bairro     String?
   cidade     String?
   estado     String?
-  
-  creditLimit    Float?   @default(0)
-  availableLimit Float?   @default(0)
-  titlesDue      Float?   @default(0)
-  titlesOverdue  Float?   @default(0)
+  paymentTermId Int?
+  paymentTerm   PaymentTerm? @relation(fields: [paymentTermId], references: [id])
+  paymentTerms  ClientPaymentTerm[]
 
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-  reps       UserClientRep[]
-  items      ClientItem[]
-  cartItems  ClientCartItem[]
-  orders     SalesOrder[]
+  creditLimit    Float? @default(0)
+  availableLimit Float? @default(0)
+  titlesDue      Float? @default(0)
+  titlesOverdue  Float? @default(0)
+
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  reps      UserClientRep[]
+  items     ClientItem[]
+  cartItems ClientCartItem[]
+  orders    SalesOrder[]
 
   @@index([name])
   @@index([cidade, estado])
+  @@index([paymentTermId])
 }
 
 // Itens vinculados ao cliente (cadastro alimentado via ERP/API)
 model ClientItem {
-  id              Int            @id @default(autoincrement())
+  id              Int           @id @default(autoincrement())
   clientId        Int
   inventoryItemId Int
   unit            String?
-  unitPrice       Float          @default(0)
-  allowed         Boolean        @default(true)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  client          Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  inventoryItem   InventoryItem  @relation(fields: [inventoryItemId], references: [id])
+  unitPrice       Float         @default(0)
+  allowed         Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  client          Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
 
   @@unique([clientId, inventoryItemId])
 }
 
+model ClientPaymentTerm {
+  id            Int         @id @default(autoincrement())
+  clientId      Int
+  paymentTermId Int
+  position      Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  client        Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  paymentTerm   PaymentTerm @relation(fields: [paymentTermId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, paymentTermId])
+  @@index([clientId])
+  @@index([paymentTermId])
+}
+
 // Carrinho de compras do cliente
 model ClientCartItem {
-  id              Int            @id @default(autoincrement())
+  id              Int           @id @default(autoincrement())
   clientId        Int
   inventoryItemId Int
-  quantity        Int            @default(1)
-  unitPrice       Float          @default(0)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  client          Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  inventoryItem   InventoryItem  @relation(fields: [inventoryItemId], references: [id])
+  quantity        Int           @default(1)
+  unitPrice       Float         @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  client          Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
 
   @@unique([clientId, inventoryItemId])
 }
@@ -454,14 +491,17 @@ model ComplaintItem {
 }
 
 model CommercialFamily {
-  id          Int       @id @default(autoincrement())
-  description String
-  createdAt   DateTime? @default(now()) @db.Timestamp(6)
-  updatedAt   DateTime? @db.Timestamp(6)
+  id             Int             @id @default(autoincrement())
+  description    String
+  erpCode        String?
+  priceBy        String?
+  createdAt      DateTime?       @default(now()) @db.Timestamp(6)
+  updatedAt      DateTime?       @db.Timestamp(6)
   // Itens relacionados
   inventoryItems InventoryItem[]
 
   @@index([description])
+  @@index([erpCode])
 }
 
 model PaymentTerm {
@@ -471,6 +511,8 @@ model PaymentTerm {
   installments Int?      @default(1)
   createdAt    DateTime? @default(now()) @db.Timestamp(6)
   updatedAt    DateTime? @db.Timestamp(6)
+  clients      Client[]
+  clientLinks  ClientPaymentTerm[]
 
   @@index([description])
 }
@@ -498,3 +540,217 @@ model users {
   sessions      sessions[]
 }
 
+// --- Módulo Gestão FinTI (Migrado) ---
+
+model GestaoFintiCategoria {
+  id        Int     @id @default(autoincrement())
+  nome      String  @unique
+  descricao   String?
+  ativo       Boolean  @default(true)
+  isTi        Boolean  @default(false)
+
+  orcamentos  GestaoFintiOrcamento[]
+  despesas   GestaoFintiDespesa[]
+
+  criadoPorId     Int?
+  criadoPor       User? @relation("GestaoFintiCategoriaCriadoPor", fields: [criadoPorId], references: [id])
+  atualizadoPorId Int?
+  atualizadoPor   User? @relation("GestaoFintiCategoriaAtualizadoPor", fields: [atualizadoPorId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("gestao_finti_categorias")
+}
+
+model GestaoFintiFornecedor {
+  id        Int     @id @default(autoincrement())
+  nome      String  @unique
+  documento String?
+  ativo     Boolean @default(true)
+  isTi      Boolean @default(false)
+
+  despesas GestaoFintiDespesa[]
+
+  criadoPorId     Int?
+  criadoPor       User? @relation("GestaoFintiFornecedorCriadoPor", fields: [criadoPorId], references: [id])
+  atualizadoPorId Int?
+  atualizadoPor   User? @relation("GestaoFintiFornecedorAtualizadoPor", fields: [atualizadoPorId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("gestao_finti_fornecedores")
+}
+
+model GestaoFintiCentroCusto {
+  id        Int     @id @default(autoincrement())
+  nome      String
+  descricao String?
+  ativo     Boolean @default(true)
+
+  despesas GestaoFintiDespesa[]
+  ativos   GestaoFintiAtivo[]
+
+  criadoPorId     Int?
+  criadoPor       User? @relation("GestaoFintiCentroCustoCriadoPor", fields: [criadoPorId], references: [id])
+  atualizadoPorId Int?
+  atualizadoPor   User? @relation("GestaoFintiCentroCustoAtualizadoPor", fields: [atualizadoPorId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("gestao_finti_centros_custo")
+}
+
+model GestaoFintiOrcamento {
+  id             Int                  @id @default(autoincrement())
+  ano            Int
+  mes            Int
+  categoriaId    Int
+  categoria      GestaoFintiCategoria @relation(fields: [categoriaId], references: [id])
+  valorPlanejado Float // Alterado de Decimal para Float (padrão do projeto)
+
+  criadoPorId     Int?
+  criadoPor       User? @relation("GestaoFintiOrcamentoCriadoPor", fields: [criadoPorId], references: [id])
+  atualizadoPorId Int?
+  atualizadoPor   User? @relation("GestaoFintiOrcamentoAtualizadoPor", fields: [atualizadoPorId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@unique([ano, mes, categoriaId])
+  @@map("gestao_finti_orcamentos")
+}
+
+model GestaoFintiDespesa {
+  id        Int    @id @default(autoincrement())
+  descricao String
+  tipo      String // RECORRENTE, OCASIONAL
+  valor     Float // Alterado de Decimal para Float
+
+  categoriaId Int
+  categoria   GestaoFintiCategoria @relation(fields: [categoriaId], references: [id])
+
+  fornecedorId Int
+  fornecedor   GestaoFintiFornecedor @relation(fields: [fornecedorId], references: [id])
+
+  centroCustoId Int?
+  centroCusto   GestaoFintiCentroCusto? @relation(fields: [centroCustoId], references: [id])
+
+  isTi Boolean @default(false)
+
+  // Detalhes
+  formaPagamento String
+  observacoes    String?
+
+  // Recorrente / Contrato
+  ativoRecorrente    Boolean?  @default(true)
+  diaVencimento      Int?
+  dataInicioContrato DateTime?
+  dataFimContrato    DateTime?
+  indiceReajuste     String?
+  percentualReajuste Float? // Alterado de Decimal para Float
+  proximoReajuste    DateTime?
+
+  // Ocasional
+  dataCompra  DateTime?
+  qtdParcelas Int?      @default(1)
+
+  parcelas GestaoFintiParcela[]
+
+  criadoPorId     Int?
+  criadoPor       User? @relation("GestaoFintiDespesaCriadoPor", fields: [criadoPorId], references: [id])
+  atualizadoPorId Int?
+  atualizadoPor   User? @relation("GestaoFintiDespesaAtualizadoPor", fields: [atualizadoPorId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([centroCustoId])
+  @@index([categoriaId])
+  @@map("gestao_finti_despesas")
+}
+
+model GestaoFintiParcela {
+  id        Int                @id @default(autoincrement())
+  despesaId Int
+  despesa   GestaoFintiDespesa @relation(fields: [despesaId], references: [id], onDelete: Cascade)
+
+  valor          Float // Alterado de Decimal para Float
+  dataVencimento DateTime
+  status         String    @default("PENDENTE") // PENDENTE, PAGO
+  dataPagamento  DateTime?
+
+  numeroParcela Int?
+
+  mesCompetencia Int
+  anoCompetencia Int
+
+  criadoPorId     Int?
+  criadoPor       User? @relation("GestaoFintiParcelaCriadoPor", fields: [criadoPorId], references: [id])
+  atualizadoPorId Int?
+  atualizadoPor   User? @relation("GestaoFintiParcelaAtualizadoPor", fields: [atualizadoPorId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([dataVencimento])
+  @@index([mesCompetencia, anoCompetencia])
+  @@index([status])
+  @@map("gestao_finti_parcelas")
+}
+
+model GestaoFintiAtivo {
+  id             Int                    @id @default(autoincrement())
+  nome           String
+  valorAquisicao Float // Alterado de Decimal para Float
+  vidaUtilMeses  Int
+  dataAquisicao  DateTime
+  centroCustoId  Int?
+  centroCusto    GestaoFintiCentroCusto? @relation(fields: [centroCustoId], references: [id])
+  
+  // Novos campos do formulário
+  descricao      String?
+  numeroSerie    String?
+  modelo         String?
+  marca          String?
+  localizacao    String?
+  responsavel    String?
+  status         String   @default("ATIVO") // ATIVO, INATIVO, MANUTENCAO, BAIXADO
+  isTi           Boolean  @default(false)
+
+  criadoPorId     Int?
+  criadoPor       User? @relation("GestaoFintiAtivoCriadoPor", fields: [criadoPorId], references: [id])
+  atualizadoPorId Int?
+  atualizadoPor   User? @relation("GestaoFintiAtivoAtualizadoPor", fields: [atualizadoPorId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("gestao_finti_ativos")
+}
+
+model GestaoFintiConfiguracao {
+  id        Int     @id @default(autoincrement())
+  chave     String  @unique
+  valor     String
+
+  criadoPorId     Int?
+  criadoPor       User? @relation("GestaoFintiConfiguracaoCriadoPor", fields: [criadoPorId], references: [id])
+  atualizadoPorId Int?
+  atualizadoPor   User? @relation("GestaoFintiConfiguracaoAtualizadoPor", fields: [atualizadoPorId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@map("gestao_finti_configuracoes")
+}

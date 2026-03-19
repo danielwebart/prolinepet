@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../lib/prisma';
 import { verifyResetCode, clearResetCode } from '../../../../../lib/resetStore';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 export async function POST(req: Request) {
   try {

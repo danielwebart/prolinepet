@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
@@ -14,22 +14,8 @@ type Permissions = { activeEntityId: number | null; entities: Entity[]; modules:
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { data: session, status } = useSession();
-  const role = (session?.user as any)?.role as string | undefined;
   const isLogin = pathname === "/login";
-  
-  useEffect(() => {
-    if (status === "unauthenticated" && !isLogin) {
-       window.location.href = "/login";
-    }
-  }, [status, isLogin]);
 
-  if (isLogin) {
-    return <main className="min-h-screen">{children}</main>;
-  }
-  
-  // Se estiver carregando por muito tempo, permitir renderizar para não travar
-  // O useEffect acima irá redirecionar se for unauthenticated
-  
   const [perms, setPerms] = useState<Permissions | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +24,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const activeEntityId = (perms?.activeEntityId ?? null);
 
-  const loadPerms = async () => {
+  useEffect(() => {
+    if (status === "unauthenticated" && !isLogin) {
+       window.location.href = "/login";
+    }
+  }, [status, isLogin]);
+
+  const loadPerms = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -46,25 +38,37 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       if (!r.ok) throw new Error(`Status: ${r.status}`);
       const j = await r.json();
       setPerms(j);
-      // Fallback: tentar selecionar a primeira entidade apenas UMA vez para evitar loop
-      if (!autoSelected && !j?.activeEntityId && Array.isArray(j?.entities) && j.entities.length > 0) {
-        setAutoSelected(true);
-        await onChangeEntity(Number(j.entities[0].id));
-      }
     } catch (err: any) {
       console.error("Failed to load permissions:", err);
       setError(err.message || "Erro de conexão");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
   
   // Recarregar permissões quando a sessão estiver confirmada
   useEffect(() => { 
-    if (status === 'authenticated') {
-        loadPerms(); 
+    if (status === 'authenticated' && !isLogin) {
+      loadPerms();
     }
-  }, [status]);
+  }, [status, isLogin, loadPerms]);
+
+  const onChangeEntity = useCallback(async (id: number) => {
+    try {
+      const r = await fetch('/api/session/entity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entityId: id }) });
+      if (r.ok) {
+        await loadPerms();
+      }
+    } catch {}
+  }, [loadPerms]);
+
+  useEffect(() => {
+    if (status !== 'authenticated' || isLogin || autoSelected) return;
+    if (!perms?.activeEntityId && Array.isArray(perms?.entities) && perms.entities.length > 0) {
+      setAutoSelected(true);
+      onChangeEntity(Number(perms.entities[0].id));
+    }
+  }, [status, isLogin, perms, autoSelected, onChangeEntity]);
 
   useEffect(() => {
     const fetchCount = async () => {
@@ -76,23 +80,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             }
         } catch {}
     };
-    if (status === 'authenticated') {
+    if (status === 'authenticated' && !isLogin) {
         fetchCount();
         // Update count periodically (30s)
         const interval = setInterval(fetchCount, 30000); 
         return () => clearInterval(interval);
     }
-  }, [status]);
+  }, [status, isLogin]);
 
-  const onChangeEntity = async (id: number) => {
-    try {
-      const r = await fetch('/api/session/entity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entityId: id }) });
-      // Se falhar (401/403), não chamar loadPerms novamente para evitar loop
-      if (r.ok) {
-        await loadPerms();
-      }
-    } catch {}
-  };
+  if (isLogin) {
+    return <main className="min-h-screen">{children}</main>;
+  }
   return (
     <div className="flex">
       <Sidebar perms={perms} mobileOpen={mobileMenuOpen} setMobileOpen={setMobileMenuOpen} pathname={pathname} />
@@ -123,6 +121,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           
           <div className="ml-auto flex items-center gap-4">
             {loading && <div className="text-xs text-gray-500">Carregando permissões…</div>}
+            {error && <div className="text-xs text-red-600">{error}</div>}
             
             <Link href="/" className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-blue-600 transition-all shadow-sm">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -4,7 +4,7 @@ import { authOptions } from '../../../../lib/auth';
 import { prisma } from '../../../../lib/prisma';
 
 // GET: Retorna a entidade ativa do usuário
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     const uid = session?.user ? Number((session.user as any).id) : undefined;

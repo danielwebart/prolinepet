@@ -28,7 +28,7 @@ export async function POST(req: Request) {
           create: { userId, entityId: e.id }
         });
         created++;
-      } catch (err) {
+      } catch {
         // Ignorar erros pontuais; o índice único previne duplicatas
       }
     }

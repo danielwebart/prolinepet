@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type User = { id: number; name: string; email: string };
 type Client = { id: number; doc?: string; name: string; cidade?: string; estado?: string };
@@ -13,9 +13,6 @@ export default function RepresentativePage() {
   const [linked, setLinked] = useState<Client[]>([]);
   const [clientQuery, setClientQuery] = useState("");
   const [mode, setMode] = useState<"all" | "linked" | "unlinked">("linked");
-
-  const [loading, setLoading] = useState(false);
-  const [opRunning, setOpRunning] = useState(false);
 
   const filteredUsers = useMemo(() => {
     const q = userQuery.trim().toLowerCase();
@@ -38,7 +35,7 @@ export default function RepresentativePage() {
     return base;
   }, [clients, linkedIds, clientQuery, mode]);
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       // Buscar todos os usuários e filtrar representantes no cliente,
       // para contornar qualquer inconsistência do endpoint com querystring
@@ -51,29 +48,27 @@ export default function RepresentativePage() {
       const reps = list.filter((u: any) => Boolean(u?.salesRepAdmin));
       const finalList = reps.length > 0 ? reps : list;
       setUsers(finalList);
-      if (!selectedUserId && finalList.length) {
-        setSelectedUserId(finalList[0].id);
-      }
-    } catch (err) {
+      setSelectedUserId((prev) => (prev ?? (finalList.length ? finalList[0].id : null)));
+    } catch {
       setUsers([]);
     }
-  };
+  }, []);
 
-  const loadClients = async () => {
+  const loadClients = useCallback(async () => {
     const res = await fetch("/api/base/clients");
     const arr = await res.json();
     setClients(Array.isArray(arr) ? arr : []);
-  };
+  }, []);
 
-  const loadLinked = async (userId: number | null) => {
+  const loadLinked = useCallback(async (userId: number | null) => {
     if (!userId) { setLinked([]); return; }
     const res = await fetch(`/api/sales/representatives/${userId}/clients`);
     const arr = await res.json();
     setLinked(Array.isArray(arr) ? arr : []);
-  };
+  }, []);
 
-  useEffect(() => { setLoading(true); Promise.all([loadUsers(), loadClients()]).finally(() => setLoading(false)); }, []);
-  useEffect(() => { loadLinked(selectedUserId); }, [selectedUserId]);
+  useEffect(() => { Promise.all([loadUsers(), loadClients()]); }, [loadUsers, loadClients]);
+  useEffect(() => { loadLinked(selectedUserId); }, [selectedUserId, loadLinked]);
 
   const toggleRow = async (c: any, checked: boolean) => {
     if (!selectedUserId) return;

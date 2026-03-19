@@ -1,14 +1,15 @@
+import { getServerSession } from "next-auth";
 import type { NextAuthOptions } from 'next-auth';
-import Credentials from 'next-auth/providers/credentials';
+import CredentialsProvider from 'next-auth/providers/credentials';
 import { prisma } from './prisma';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { authenticator } from './otp';
 
 export const authOptions: NextAuthOptions = {
   session: { strategy: 'jwt' },
   pages: { signIn: '/login' },
   providers: [
-    Credentials({
+    CredentialsProvider({
       name: 'Credenciais',
       credentials: {
         email: { label: 'E-mail', type: 'email' },
@@ -47,7 +48,7 @@ export const authOptions: NextAuthOptions = {
              throw new Error('2FA_REQUIRED');
           }
           try {
-            const isValid = await authenticator.verify({ token: code, secret: user.twoFactorSecret });
+            const isValid = authenticator.verify({ token: code, secret: user.twoFactorSecret });
             if (!isValid) {
               throw new Error('Código 2FA inválido');
             }
@@ -102,20 +103,15 @@ export const authOptions: NextAuthOptions = {
             });
             activeEntityId = ueRecord?.entityId ?? null;
           }
-          // 3) Fallback final: entidade 1 se existir
-          if (activeEntityId == null) {
-             const eRecord = await prisma.entity.findUnique({ where: { id: 1 }, select: { id: true } });
-             if (eRecord) activeEntityId = 1;
-          }
-          (session as any).activeEntityId = activeEntityId;
-        } else {
-          (session as any).activeEntityId = null;
+
+          (session as any).entityId = activeEntityId;
         }
       } catch (err) {
-        console.error("Session error:", err);
-        (session as any).activeEntityId = null;
+        console.error("Error setting session entityId", err);
       }
       return session;
     }
   }
 };
+
+export const auth = () => getServerSession(authOptions);
