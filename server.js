@@ -1,4 +1,4 @@
-require('dotenv').config({ override: true })
+require('dotenv').config({ override: false })
 const { createServer } = require('http')
 const { parse } = require('url')
 const next = require('next')
