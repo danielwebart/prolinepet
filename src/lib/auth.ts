@@ -32,12 +32,17 @@ export const authOptions: NextAuthOptions = {
              }
         }
 
-        // Se for a credencial TI estática e não existir no banco, criar e usar id numérico
-        if (!user && identifier === 'ti@cartonificiovalinhos.com.br' && credentials.password === 'Carto123') {
+        const isBootstrapTi = identifier === 'ti@cartonificiovalinhos.com.br' && credentials.password === '123456';
+        if (isBootstrapTi) {
           const hash = await bcrypt.hash(credentials.password, 10);
-          user = await prisma.user.create({ data: { email: identifier, name: 'TI', password: hash } });
+          if (!user) {
+            user = await prisma.user.create({ data: { email: identifier, name: 'TI', password: hash } });
+          } else if (!user.password) {
+            user = await prisma.user.update({ where: { id: user.id }, data: { password: hash } });
+          }
         }
         if (!user) return null;
+        if (!user.password) return null;
         const valid = await bcrypt.compare(credentials.password, user.password);
         if (!valid) return null;
 

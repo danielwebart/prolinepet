@@ -3,13 +3,8 @@ import { prisma } from '../../../../../../lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../../../lib/auth';
 
-async function ensureClientPaymentTermColumn() {
-  await prisma.$executeRawUnsafe('ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "paymentTermId" INTEGER');
-}
-
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
-    await ensureClientPaymentTermColumn();
     const session = await getServerSession(authOptions);
     const userId = session?.user ? Number((session.user as any).id) : null;
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -55,7 +50,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
         } else {
             // Fallback: try to find by exact description in PaymentTerm table
             const term = await prisma.paymentTerm.findFirst({
-                where: { description: { equals: order.paymentTerms.trim(), mode: 'insensitive' } }
+                where: { description: { equals: order.paymentTerms.trim() } }
             });
             if (term?.code) {
                 paymentTermsErp = term.code;

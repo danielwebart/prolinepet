@@ -15,7 +15,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'CNPJ e Nome obrigatórios' }, { status: 400 });
     }
 
-    // 1) Criar/atualizar entidade via Prisma (evita problemas de case em Postgres)
+    // 1) Criar/atualizar entidade via Prisma
     const entity = await prisma.entity.upsert({
       where: { cnpj },
       update: { name, isActive: true },
@@ -55,9 +55,10 @@ export async function POST(request: Request) {
         update: {},
         create: { userId: u.id, entityId }
       });
-      // Atualiza coluna com Prisma (case correto)
-      // Atualiza diretamente por SQL para evitar problemas de tipos gerados
-      await prisma.$executeRawUnsafe(`UPDATE "User" SET "lastEntityId"=${entityId} WHERE "id"=${u.id}`);
+      await prisma.user.update({
+        where: { id: u.id },
+        data: { lastEntityId: entityId }
+      });
       userLinked++;
     }
 

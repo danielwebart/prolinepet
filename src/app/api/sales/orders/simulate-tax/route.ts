@@ -50,7 +50,7 @@ export async function POST(request: Request) {
             paymentTermsErp = parseInt(match[1], 10);
         } else {
              const term = await prisma.paymentTerm.findFirst({
-                 where: { description: { equals: paymentTerms.trim(), mode: 'insensitive' } }
+                 where: { description: { equals: paymentTerms.trim() } }
              });
              if (term?.code) paymentTermsErp = term.code;
         }

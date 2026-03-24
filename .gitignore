@@ -29,3 +29,6 @@ dist/
 out/
 *.tsbuildinfo
 prisma/*.part
+
+# Uploads (persistir fora do Git)
+public/uploads/

@@ -312,7 +312,7 @@ export async function POST(request: Request) {
         const resolved = m?.[1]
           ? await prisma.paymentTerm.findFirst({ where: { code: Number(m[1]) } })
           : await prisma.paymentTerm.findFirst({
-              where: { description: { equals: raw, mode: 'insensitive' } }
+              where: { description: { equals: raw } }
             });
 
         if (hasLinkedTerms) {

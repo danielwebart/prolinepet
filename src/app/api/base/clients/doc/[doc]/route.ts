@@ -73,7 +73,7 @@ async function resolvePaymentTermId(body: any): Promise<number | null> {
     null;
   if (descCandidate) {
     const term = await prisma.paymentTerm.findFirst({
-      where: { description: { equals: descCandidate, mode: 'insensitive' } },
+      where: { description: { equals: descCandidate } },
       select: { id: true },
     }).catch(() => null);
     if (term?.id) return term.id;

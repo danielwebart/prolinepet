@@ -40,11 +40,14 @@ export async function POST(request: Request) {
     const entityId = Number(body.entityId);
     if (!entityId) return NextResponse.json({ error: 'entityId inválido' }, { status: 400 });
     // Verificar vínculo do usuário com a entidade
-    const link: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "UserEntity" WHERE "userId"=${uid} AND "entityId"=${entityId}`);
-    if (link.length === 0) {
+    const link = await prisma.userEntity.findUnique({
+      where: { userId_entityId: { userId: uid, entityId } },
+      select: { id: true },
+    });
+    if (!link) {
       return NextResponse.json({ error: 'Usuário não vinculado à entidade' }, { status: 403 });
     }
-    await prisma.$executeRawUnsafe(`UPDATE "User" SET "lastEntityId"=${entityId} WHERE "id"=${uid}`);
+    await prisma.user.update({ where: { id: uid }, data: { lastEntityId: entityId } });
     return NextResponse.json({ ok: true, activeEntityId: entityId });
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: String(err?.message || err) }, { status: 500 });

@@ -2,57 +2,34 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../../../lib/auth';
 import { prisma } from '../../../../../../lib/prisma';
-
-async function isProgramAllowed(uid: number, entityId: number | null, programCode: string) {
-  if (!entityId) return false;
-  const modRow: any[] = await prisma.$queryRawUnsafe(`SELECT m."id" FROM "Program" p JOIN "Module" m ON m."id"=p."moduleId" WHERE p."code"='${programCode}' LIMIT 1`);
-  const moduleId = modRow[0]?.id;
-  if (!moduleId) return false;
-  const ue: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "UserEntity" WHERE "userId"=${uid} AND "entityId"=${entityId}`);
-  if (ue.length === 0) return false;
-  const ueId = ue[0].id;
-  const uem: any[] = await prisma.$queryRawUnsafe(`SELECT "allowed" FROM "UserEntityModule" WHERE "userEntityId"=${ueId} AND "moduleId"=${moduleId}`);
-  const moduleAllowed = uem.length === 0 ? true : uem.some((r: any) => Number(r.allowed) === 1);
-  if (!moduleAllowed) return false;
-  const progRow: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "Program" WHERE "code"='${programCode}' LIMIT 1`);
-  const programId = progRow[0]?.id;
-  if (!programId) return false;
-  const up: any[] = await prisma.$queryRawUnsafe(`
-    SELECT uemp."allowed" FROM "UserEntityModuleProgram" uemp
-    JOIN "UserEntityModule" uem ON uem."id"=uemp."userEntityModuleId"
-    WHERE uem."userEntityId"=${ueId} AND uem."moduleId"=${moduleId} AND uemp."programId"=${programId}
-  `);
-  const programAllowed = up.length === 0 ? true : up.some((r: any) => Number(r.allowed) === 1);
-  return programAllowed;
-}
+import { isProgramAllowed } from '../../../../../../lib/isProgramAllowed';
 
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
     const session = await getServerSession(authOptions);
     const uid = session?.user ? Number((session.user as any).id) : undefined;
-    const entityId = Number(params.id) || null;
+    const sessionEntityId = (session as any)?.entityId ?? (session as any)?.activeEntityId ?? null;
     if (!uid) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
-    const allowed = await isProgramAllowed(uid, entityId, 'ADMIN_ENTITIES');
+    const allowed = await isProgramAllowed(uid, sessionEntityId, 'ADMIN_ENTITIES');
     if (!allowed) return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     const eid = Number(params.id);
     const body = await request.json();
     const moduleId = Number(body.moduleId);
     const linked = Boolean(body.linked);
     if (!eid || !moduleId) return NextResponse.json({ error: 'Parâmetros inválidos' }, { status: 400 });
-    const existing: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "EntityModule" WHERE "entityId"=${eid} AND "moduleId"=${moduleId}`);
     if (linked) {
-      if (existing.length === 0) {
-        await prisma.$executeRawUnsafe(`INSERT INTO "EntityModule" ("entityId", "moduleId") VALUES (${eid}, ${moduleId})`);
-      }
+      await prisma.entityModule.create({ data: { entityId: eid, moduleId } }).catch(() => null);
     } else {
-      if (existing.length > 0) {
-        // Remover primeiro os programas vinculados a este EntityModule para evitar violação de FK
-        const emId = Number(existing[0]?.id);
-        if (emId) {
-          await prisma.$executeRawUnsafe(`DELETE FROM "EntityModuleProgram" WHERE "entityModuleId"=${emId}`);
-          await prisma.$executeRawUnsafe(`DELETE FROM "EntityModule" WHERE "id"=${emId}`);
-        }
+      const em = await prisma.entityModule.findUnique({
+        where: { entityId_moduleId: { entityId: eid, moduleId } },
+        select: { id: true },
+      });
+      if (em?.id) {
+        await prisma.$transaction([
+          prisma.entityModuleProgram.deleteMany({ where: { entityModuleId: em.id } }),
+          prisma.entityModule.delete({ where: { id: em.id } }),
+        ]);
       }
     }
     return NextResponse.json({ ok: true });
@@ -66,9 +43,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   try {
     const session = await getServerSession(authOptions);
     const uid = session?.user ? Number((session.user as any).id) : undefined;
-    const entityId = Number(params.id) || null;
+    const sessionEntityId = (session as any)?.entityId ?? (session as any)?.activeEntityId ?? null;
     if (!uid) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
-    const allowed = await isProgramAllowed(uid, entityId, 'ADMIN_ENTITIES');
+    const allowed = await isProgramAllowed(uid, sessionEntityId, 'ADMIN_ENTITIES');
     if (!allowed) return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
 
     const eid = Number(params.id);
@@ -78,27 +55,19 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const action = String(body?.action || '').toLowerCase();
 
     if (action === 'link_all') {
-      // Vincula todos os módulos ativos à entidade (evitando duplicidades)
-      await prisma.$executeRawUnsafe(`
-        INSERT INTO "EntityModule" ("entityId", "moduleId")
-        SELECT ${eid}, m."id" FROM "Module" m
-        WHERE m."isActive"=true AND NOT EXISTS (
-          SELECT 1 FROM "EntityModule" em WHERE em."entityId"=${eid} AND em."moduleId"=m."id"
-        )
-      `);
+      const modules = await prisma.module.findMany({ where: { isActive: true }, select: { id: true } });
+      await prisma.entityModule.createMany({
+        data: modules.map((m) => ({ entityId: eid, moduleId: m.id })),
+        skipDuplicates: true,
+      });
       return NextResponse.json({ ok: true, action: 'link_all' });
     }
 
     if (action === 'unlink_all') {
-      // Remove vínculos de programas primeiro para evitar violação de FK
-      await prisma.$executeRawUnsafe(`
-        DELETE FROM "EntityModuleProgram"
-        WHERE "entityModuleId" IN (SELECT "id" FROM "EntityModule" WHERE "entityId"=${eid})
-      `);
-      // Agora remove todos os vínculos de módulos da entidade
-      await prisma.$executeRawUnsafe(`
-        DELETE FROM "EntityModule" WHERE "entityId"=${eid}
-      `);
+      await prisma.$transaction([
+        prisma.entityModuleProgram.deleteMany({ where: { entityModule: { entityId: eid } } }),
+        prisma.entityModule.deleteMany({ where: { entityId: eid } }),
+      ]);
       return NextResponse.json({ ok: true, action: 'unlink_all' });
     }
 
@@ -113,32 +82,22 @@ export async function GET(request: Request, { params }: { params: { id: string }
   try {
     const session = await getServerSession(authOptions);
     const uid = session?.user ? Number((session.user as any).id) : undefined;
-    const entityId = Number(params.id) || null;
+    const sessionEntityId = (session as any)?.entityId ?? (session as any)?.activeEntityId ?? null;
     if (!uid) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
-    const allowed = await isProgramAllowed(uid, entityId, 'ADMIN_ENTITIES');
+    const allowed = await isProgramAllowed(uid, sessionEntityId, 'ADMIN_ENTITIES');
     if (!allowed) return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
 
     const eid = Number(params.id);
     if (!eid) return NextResponse.json({ error: 'ID da entidade inválido' }, { status: 400 });
 
-    const rows: any[] = await prisma.$queryRawUnsafe(`
-      SELECT m."id" AS id, m."code" AS code, m."name" AS name,
-        CASE WHEN EXISTS (
-          SELECT 1 FROM "EntityModule" em WHERE em."entityId"=${eid} AND em."moduleId"=m."id"
-        ) THEN 1 ELSE 0 END AS linked
-      FROM "Module" m
-      WHERE m."isActive"=true
-      ORDER BY m."name"
-    `);
+    const [modules, links] = await Promise.all([
+      prisma.module.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, code: true, name: true } }),
+      prisma.entityModule.findMany({ where: { entityId: eid }, select: { moduleId: true } }),
+    ]);
+    const linkedSet = new Set(links.map((l) => l.moduleId));
+    const out = modules.map((m) => ({ ...m, linked: linkedSet.has(m.id) }));
 
-    const modules = rows.map(r => ({
-      id: Number(r.id),
-      code: String(r.code),
-      name: String(r.name),
-      linked: Number(r.linked) === 1,
-    }));
-
-    return NextResponse.json({ modules });
+    return NextResponse.json({ modules: out });
   } catch (err: any) {
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
   }

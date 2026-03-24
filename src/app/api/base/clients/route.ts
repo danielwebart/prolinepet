@@ -7,27 +7,6 @@ function normalizeDoc(doc: string): string {
   return (doc || '').replace(/\D+/g, '');
 }
 
-async function ensureClientPaymentTermColumn() {
-  await prisma.$executeRawUnsafe('ALTER TABLE "Client" ADD COLUMN IF NOT EXISTS "paymentTermId" INTEGER');
-  await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "Client_paymentTermId_idx" ON "Client" ("paymentTermId")');
-}
-
-async function ensureClientPaymentTermsTable() {
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "ClientPaymentTerm" (
-      "id" SERIAL PRIMARY KEY,
-      "clientId" INTEGER NOT NULL,
-      "paymentTermId" INTEGER NOT NULL,
-      "position" INTEGER DEFAULT 0,
-      "createdAt" TIMESTAMP DEFAULT NOW(),
-      "updatedAt" TIMESTAMP
-    );
-  `);
-  await prisma.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "ClientPaymentTerm_clientId_paymentTermId_key" ON "ClientPaymentTerm" ("clientId","paymentTermId")');
-  await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "ClientPaymentTerm_clientId_idx" ON "ClientPaymentTerm" ("clientId")');
-  await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "ClientPaymentTerm_paymentTermId_idx" ON "ClientPaymentTerm" ("paymentTermId")');
-}
-
 async function resolvePaymentTermId(body: any): Promise<number | null> {
   const num = (v: any): number | null => {
     if (v === null || v === undefined) return null;
@@ -75,7 +54,7 @@ async function resolvePaymentTermId(body: any): Promise<number | null> {
     null;
   if (descCandidate) {
     const term = await prisma.paymentTerm.findFirst({
-      where: { description: { equals: descCandidate, mode: 'insensitive' } },
+      where: { description: { equals: descCandidate } },
       select: { id: true },
     }).catch(() => null);
     if (term?.id) return term.id;
@@ -137,7 +116,6 @@ async function resolvePaymentTermIds(body: any): Promise<number[] | null> {
 
 export async function GET(request: Request) {
   try {
-    await ensureClientPaymentTermColumn();
     const session = await getServerSession(authOptions);
     const userId = (session?.user as any)?.id ? Number((session?.user as any).id) : null;
     
@@ -152,41 +130,65 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url);
     const q = (url.searchParams.get('q') || '').trim();
-    const esc = q.replace(/'/g, "''");
+    const digits = q ? normalizeDoc(q) : '';
+    const qNum = q ? Number(q) : NaN;
+    const idCandidate = Number.isFinite(qNum) ? Math.trunc(qNum) : null;
 
-    // Ajuste nos likes para usar alias 'c' se necessário ou direto
-    // Como vamos fazer JOIN, é bom qualificar as colunas para evitar ambiguidade se houver colunas iguais em UserClientRep (ex: id)
-    const likeByText = `c."name" ILIKE '%${esc}%' OR c."cidade" ILIKE '%${esc}%' OR c."estado" ILIKE '%${esc}%'`;
-    const likeById = `CAST(c."id" AS TEXT) ILIKE '%${esc}%'`;
-    const likeByDoc = `c."doc" ILIKE '%${esc}%'`;
-    
-    const searchClause = q ? `AND (${likeByText} OR ${likeById} OR ${likeByDoc})` : '';
+    const where: any = {};
+    if (!isSalesAdmin) where.reps = { some: { userId } };
 
-    const sql = isSalesAdmin
-      ? `
-        SELECT c."id", c."doc", c."name", c."cep", c."logradouro", c."numero", c."bairro", c."cidade", c."estado",
-               c."creditLimit", c."availableLimit", c."titlesDue", c."titlesOverdue",
-               c."paymentTermId", pt."code" AS "paymentTermCode", pt."description" AS "paymentTermDescription"
-        FROM "Client" c
-        LEFT JOIN "PaymentTerm" pt ON pt."id" = c."paymentTermId"
-        WHERE 1=1
-        ${searchClause}
-        ORDER BY c."name" ASC
-      `
-      : `
-        SELECT c."id", c."doc", c."name", c."cep", c."logradouro", c."numero", c."bairro", c."cidade", c."estado",
-               c."creditLimit", c."availableLimit", c."titlesDue", c."titlesOverdue",
-               c."paymentTermId", pt."code" AS "paymentTermCode", pt."description" AS "paymentTermDescription"
-        FROM "Client" c
-        INNER JOIN "UserClientRep" ucr ON c."id" = ucr."clientId"
-        LEFT JOIN "PaymentTerm" pt ON pt."id" = c."paymentTermId"
-        WHERE ucr."userId" = ${userId}
-        ${searchClause}
-        ORDER BY c."name" ASC
-      `;
+    if (q) {
+      const or: any[] = [
+        { name: { contains: q } },
+        { cidade: { contains: q } },
+        { estado: { contains: q } },
+      ];
+      if (digits) or.push({ doc: { contains: digits } });
+      if (idCandidate !== null) or.push({ id: idCandidate });
+      where.OR = or;
+    }
 
-    const clients = await prisma.$queryRawUnsafe<any[]>(sql);
-    return NextResponse.json(clients);
+    const clients = await prisma.client.findMany({
+      where,
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        doc: true,
+        name: true,
+        cep: true,
+        logradouro: true,
+        numero: true,
+        bairro: true,
+        cidade: true,
+        estado: true,
+        creditLimit: true,
+        availableLimit: true,
+        titlesDue: true,
+        titlesOverdue: true,
+        paymentTermId: true,
+        paymentTerm: { select: { code: true, description: true } },
+      },
+    });
+
+    const out = clients.map((c) => ({
+      id: c.id,
+      doc: c.doc,
+      name: c.name,
+      cep: c.cep,
+      logradouro: c.logradouro,
+      numero: c.numero,
+      bairro: c.bairro,
+      cidade: c.cidade,
+      estado: c.estado,
+      creditLimit: c.creditLimit,
+      availableLimit: c.availableLimit,
+      titlesDue: c.titlesDue,
+      titlesOverdue: c.titlesOverdue,
+      paymentTermId: c.paymentTermId,
+      paymentTermCode: c.paymentTerm?.code ?? null,
+      paymentTermDescription: c.paymentTerm?.description ?? null,
+    }));
+    return NextResponse.json(out);
   } catch (err: any) {
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
   }
@@ -194,8 +196,6 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    await ensureClientPaymentTermColumn();
-    await ensureClientPaymentTermsTable();
     const body = await request.json();
     const doc = normalizeDoc(String(body?.doc || '')) || null;
     const name = String(body?.name || '').trim();
@@ -212,34 +212,41 @@ export async function POST(request: Request) {
 
     const syncPaymentTermIds = listProvided ? paymentTermIds : (paymentTermId ? [paymentTermId] : null);
 
-    const esc = (s: string | null) => s === null ? 'NULL' : `'${String(s).replace(/'/g, "''")}'`;
-    const paymentTermIdSql = paymentTermId ? String(paymentTermId) : 'NULL';
-    const paymentTermUpdateSql = listProvided
-      ? `"paymentTermId"=EXCLUDED."paymentTermId",`
-      : `"paymentTermId"=COALESCE(EXCLUDED."paymentTermId","Client"."paymentTermId"),`;
-    const insertSql = `INSERT INTO "Client" ("doc","name","cep","logradouro","numero","bairro","cidade","estado","paymentTermId","updatedAt")
-      VALUES (${esc(doc)}, ${esc(name)}, ${esc(cep)}, ${esc(logradouro)}, ${esc(numero)}, ${esc(bairro)}, ${esc(cidade)}, ${esc(estado)}, ${paymentTermIdSql}, CURRENT_TIMESTAMP)
-      ON CONFLICT ("doc") DO UPDATE SET
-        "name"=EXCLUDED."name",
-        "cep"=EXCLUDED."cep",
-        "logradouro"=EXCLUDED."logradouro",
-        "numero"=EXCLUDED."numero",
-        "bairro"=EXCLUDED."bairro",
-        "cidade"=EXCLUDED."cidade",
-        "estado"=EXCLUDED."estado",
-        ${paymentTermUpdateSql}
-        "updatedAt"=CURRENT_TIMESTAMP
-      RETURNING "id","doc","name","cep","logradouro","numero","bairro","cidade","estado","paymentTermId"`;
-
     const created = await prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRawUnsafe<any[]>(insertSql);
-      const row = rows[0];
-      if (row?.id && syncPaymentTermIds !== null) {
-        await tx.clientPaymentTerm.deleteMany({ where: { clientId: row.id } });
+      const baseData: any = {
+        name,
+        cep,
+        logradouro,
+        numero,
+        bairro,
+        cidade,
+        estado,
+      };
+
+      if (listProvided) {
+        baseData.paymentTermId = paymentTermId;
+      } else if (paymentTermId !== null) {
+        baseData.paymentTermId = paymentTermId;
+      }
+
+      const client = doc
+        ? await tx.client.upsert({
+            where: { doc },
+            update: baseData,
+            create: { ...baseData, doc },
+            select: { id: true, doc: true, name: true, cep: true, logradouro: true, numero: true, bairro: true, cidade: true, estado: true, paymentTermId: true },
+          })
+        : await tx.client.create({
+            data: { ...baseData, doc: null },
+            select: { id: true, doc: true, name: true, cep: true, logradouro: true, numero: true, bairro: true, cidade: true, estado: true, paymentTermId: true },
+          });
+
+      if (syncPaymentTermIds !== null) {
+        await tx.clientPaymentTerm.deleteMany({ where: { clientId: client.id } });
         if (syncPaymentTermIds.length > 0) {
           await tx.clientPaymentTerm.createMany({
             data: syncPaymentTermIds.map((id, idx) => ({
-              clientId: row.id,
+              clientId: client.id,
               paymentTermId: id,
               position: idx,
             })),
@@ -247,7 +254,8 @@ export async function POST(request: Request) {
           });
         }
       }
-      return row;
+
+      return client;
     });
 
     return NextResponse.json(created, { status: 201 });

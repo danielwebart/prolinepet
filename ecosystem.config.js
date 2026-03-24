@@ -3,7 +3,7 @@ module.exports = {
     {
       name: 'portal-web',
       script: 'server.js',
-      cwd: 'D:\\Sites\\portalWeb',
+      cwd: __dirname,
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,

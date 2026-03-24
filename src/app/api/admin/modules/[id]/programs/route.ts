@@ -2,29 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../../../../lib/auth';
 import { prisma } from '../../../../../../lib/prisma';
-
-async function isProgramAllowed(uid: number, entityId: number | null, programCode: string) {
-  if (!entityId) return false;
-  const modRow: any[] = await prisma.$queryRawUnsafe(`SELECT m."id" FROM "Program" p JOIN "Module" m ON m."id"=p."moduleId" WHERE p."code"='${programCode}' LIMIT 1`);
-  const moduleId = modRow[0]?.id;
-  if (!moduleId) return false;
-  const ue: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "UserEntity" WHERE "userId"=${uid} AND "entityId"=${entityId}`);
-  if (ue.length === 0) return false;
-  const ueId = ue[0].id;
-  const uem: any[] = await prisma.$queryRawUnsafe(`SELECT "allowed" FROM "UserEntityModule" WHERE "userEntityId"=${ueId} AND "moduleId"=${moduleId}`);
-  const moduleAllowed = uem.length === 0 ? true : uem.some((r: any) => Number(r.allowed) === 1);
-  if (!moduleAllowed) return false;
-  const progRow: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "Program" WHERE "code"='${programCode}' LIMIT 1`);
-  const programId = progRow[0]?.id;
-  if (!programId) return false;
-  const up: any[] = await prisma.$queryRawUnsafe(`
-    SELECT uemp."allowed" FROM "UserEntityModuleProgram" uemp
-    JOIN "UserEntityModule" uem ON uem."id"=uemp."userEntityModuleId"
-    WHERE uem."userEntityId"=${ueId} AND uem."moduleId"=${moduleId} AND uemp."programId"=${programId}
-  `);
-  const programAllowed = up.length === 0 ? true : up.some((r: any) => Number(r.allowed) === 1);
-  return programAllowed;
-}
+import { isProgramAllowed } from '../../../../../../lib/isProgramAllowed';
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
   try {
@@ -36,7 +14,11 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
     if (!allowed) return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     const mid = Number(params.id);
     if (!mid) return NextResponse.json({ error: 'Módulo inválido' }, { status: 400 });
-    const programs = await prisma.$queryRawUnsafe(`SELECT "id", "code", "name", "description", "isActive", "showInMenu" FROM "Program" WHERE "moduleId"=${mid} ORDER BY "name"`);
+    const programs = await prisma.program.findMany({
+      where: { moduleId: mid },
+      orderBy: { name: 'asc' },
+      select: { id: true, code: true, name: true, description: true, isActive: true, showInMenu: true },
+    });
     return NextResponse.json({ programs });
   } catch (err: any) {
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
@@ -58,11 +40,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const description = body.description ? String(body.description).trim() : null;
     const showInMenu = body.showInMenu === false ? false : true;
     if (!mid || !code || !name) return NextResponse.json({ error: 'Parâmetros obrigatórios' }, { status: 400 });
-    const exists: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "Program" WHERE "code"='${code}'`);
-    if (exists.length > 0) return NextResponse.json({ error: 'Código já cadastrado' }, { status: 409 });
-      await prisma.$executeRawUnsafe(`INSERT INTO "Program" ("moduleId", "code", "name", "description", "isActive", "showInMenu") VALUES (${mid}, '${code}', '${name.replace(/'/g, "''")}', ${description ? `'${description.replace(/'/g, "''")}'` : 'NULL'}, TRUE, ${showInMenu ? 'TRUE' : 'FALSE'})`);
-    const row: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "Program" WHERE "code"='${code}' LIMIT 1`);
-    return NextResponse.json({ ok: true, id: row[0]?.id });
+    const exists = await prisma.program.findUnique({ where: { code }, select: { id: true } });
+    if (exists) return NextResponse.json({ error: 'Código já cadastrado' }, { status: 409 });
+    const created = await prisma.program.create({
+      data: { moduleId: mid, code, name, description, isActive: true, showInMenu },
+      select: { id: true },
+    });
+    return NextResponse.json({ ok: true, id: created.id });
   } catch (err: any) {
     return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
   }

@@ -1,22 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 
-async function ensureClientPaymentTermsTable() {
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "ClientPaymentTerm" (
-      "id" SERIAL PRIMARY KEY,
-      "clientId" INTEGER NOT NULL,
-      "paymentTermId" INTEGER NOT NULL,
-      "position" INTEGER DEFAULT 0,
-      "createdAt" TIMESTAMP DEFAULT NOW(),
-      "updatedAt" TIMESTAMP
-    );
-  `);
-  await prisma.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "ClientPaymentTerm_clientId_paymentTermId_key" ON "ClientPaymentTerm" ("clientId","paymentTermId")');
-  await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "ClientPaymentTerm_clientId_idx" ON "ClientPaymentTerm" ("clientId")');
-  await prisma.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "ClientPaymentTerm_paymentTermId_idx" ON "ClientPaymentTerm" ("paymentTermId")');
-}
-
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
@@ -26,7 +10,6 @@ export async function GET(request: Request) {
 
     if (clientIdParam) {
       if (!Number.isFinite(clientId) || (clientId as number) <= 0) return NextResponse.json([]);
-      await ensureClientPaymentTermsTable();
       const links = await prisma.clientPaymentTerm.findMany({
         where: { clientId: clientId as number },
         include: { paymentTerm: true },

@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -298,7 +298,7 @@ model SalesOrderStatusHistory {
   orderId   Int
   status    String
   changedAt DateTime   @default(now())
-  messages  Json       @default("[]")
+  messages  Json
   order     SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
@@ -490,15 +490,36 @@ model ComplaintItem {
   complaint         Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
 }
 
+model StandardOccurrence {
+  id          Int                       @id @default(autoincrement())
+  description String
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+  families    StandardOccurrenceFamily[]
+
+  @@index([description])
+}
+
+model StandardOccurrenceFamily {
+  occurrenceId Int
+  familyId     Int
+  occurrence   StandardOccurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  family       CommercialFamily   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@id([occurrenceId, familyId])
+  @@index([familyId])
+}
+
 model CommercialFamily {
   id             Int             @id @default(autoincrement())
   description    String
   erpCode        String?
   priceBy        String?
-  createdAt      DateTime?       @default(now()) @db.Timestamp(6)
-  updatedAt      DateTime?       @db.Timestamp(6)
+  createdAt      DateTime?       @default(now())
+  updatedAt      DateTime?
   // Itens relacionados
   inventoryItems InventoryItem[]
+  standardOccurrenceFamilies StandardOccurrenceFamily[]
 
   @@index([description])
   @@index([erpCode])
@@ -509,8 +530,8 @@ model PaymentTerm {
   code         Int?      @unique
   description  String
   installments Int?      @default(1)
-  createdAt    DateTime? @default(now()) @db.Timestamp(6)
-  updatedAt    DateTime? @db.Timestamp(6)
+  createdAt    DateTime? @default(now())
+  updatedAt    DateTime?
   clients      Client[]
   clientLinks  ClientPaymentTerm[]
 
@@ -520,8 +541,8 @@ model PaymentTerm {
 model sessions {
   token      String    @id @db.VarChar(64)
   user_id    Int
-  expires    DateTime  @db.Timestamptz(6)
-  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  expires    DateTime  @db.DateTime(6)
+  created_at DateTime? @default(now()) @db.DateTime(6)
   users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
@@ -536,7 +557,7 @@ model users {
   email         String     @unique(map: "users_email_idx") @db.VarChar(255)
   name          String     @db.VarChar(255)
   password_hash String     @db.VarChar(255)
-  created_at    DateTime?  @default(now()) @db.Timestamptz(6)
+  created_at    DateTime?  @default(now()) @db.DateTime(6)
   sessions      sessions[]
 }
 

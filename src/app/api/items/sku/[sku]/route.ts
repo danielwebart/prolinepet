@@ -1,25 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../../lib/prisma';
 
-async function ensureCommercialFamilyColumns() {
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "CommercialFamily" (
-      "id" SERIAL PRIMARY KEY,
-      "description" TEXT NOT NULL,
-      "erpCode" TEXT,
-      "priceBy" TEXT DEFAULT 'UNIT',
-      "createdAt" TIMESTAMP DEFAULT NOW(),
-      "updatedAt" TIMESTAMP
-    );
-  `);
-  await prisma.$executeRawUnsafe('ALTER TABLE "CommercialFamily" ADD COLUMN IF NOT EXISTS "erpCode" TEXT');
-  await prisma.$executeRawUnsafe('ALTER TABLE "CommercialFamily" ADD COLUMN IF NOT EXISTS "priceBy" TEXT DEFAULT \'UNIT\'');
-  await prisma.$executeRawUnsafe('UPDATE "CommercialFamily" SET "priceBy"=\'UNIT\' WHERE "priceBy" IS NULL');
-}
-
 export async function GET(_: Request, { params }: { params: { sku: string } }) {
   try {
-    await ensureCommercialFamilyColumns();
     const raw = params.sku ?? '';
     const sku = decodeURIComponent(raw).trim();
     if (!sku) return NextResponse.json({ error: 'SKU obrigatório' }, { status: 400 });

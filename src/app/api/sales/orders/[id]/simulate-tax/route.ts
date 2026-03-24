@@ -55,7 +55,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
         } else {
             // Fallback: try to find by exact description in PaymentTerm table
             const term = await prisma.paymentTerm.findFirst({
-                where: { description: { equals: order.paymentTerms.trim(), mode: 'insensitive' } }
+                where: { description: { equals: order.paymentTerms.trim() } }
             });
             if (term?.code) {
                 paymentTermsErp = term.code;

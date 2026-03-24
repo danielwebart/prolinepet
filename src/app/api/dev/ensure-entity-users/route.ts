@@ -125,11 +125,6 @@ export async function POST() {
       }
     }
 
-    // 9) Em Postgres, não usamos PRAGMA nem atualizamos coluna lastEntityId aqui.
-    // A entidade ativa é derivada pelo callback de sessão (auth.ts) selecionando
-    // o último vínculo em "UserEntity". Assim, após vincular os usuários à entidade
-    // acima, a UI refletirá a entidade ativa sem necessidade de alteração direta.
-
     return NextResponse.json({
       ok: true,
       entity: { id: entity.id, cnpj: entity.cnpj, name: entity.name },

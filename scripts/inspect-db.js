@@ -3,11 +3,14 @@ const { PrismaClient } = require('@prisma/client');
 async function main() {
   const prisma = new PrismaClient();
   try {
-    console.log('Inspecting Postgres tables in schema "public"...');
-    const tables = await prisma.$queryRawUnsafe(
-      `SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public' ORDER BY tablename;`
-    );
-    const names = tables.map((t) => t.tablename);
+    console.log('Inspecting MariaDB tables in current schema...');
+    const tables = await prisma.$queryRawUnsafe(`
+      SELECT table_name AS tableName
+      FROM information_schema.tables
+      WHERE table_schema = DATABASE()
+      ORDER BY table_name;
+    `);
+    const names = tables.map((t) => t.tableName);
     console.log('Tables found:', names.length);
     console.log(names);
 
@@ -22,8 +25,8 @@ async function main() {
     const results = [];
     for (const t of expected) {
       try {
-        const rows = await prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${t}";`);
-        results.push({ table: t, count: rows[0]?.c ?? 0, present: true });
+        const rows = await prisma.$queryRawUnsafe(`SELECT COUNT(*) AS c FROM \`${t}\`;`);
+        results.push({ table: t, count: Number(rows[0]?.c ?? 0), present: true });
       } catch (e) {
         results.push({ table: t, count: null, present: false });
       }

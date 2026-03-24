@@ -22,16 +22,13 @@ export async function POST(req: Request) {
          }
     }
     
-    // Check for TI static user fallback
-    if (!user && email === 'ti@cartonificiovalinhos.com.br' && password === 'Carto123') {
-       // TI user doesn't have 2FA required by default unless created and updated
-       return NextResponse.json({ required: false });
-    }
-
     if (!user) {
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
     }
 
+    if (!user.password) {
+      return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });
+    }
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) {
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 });

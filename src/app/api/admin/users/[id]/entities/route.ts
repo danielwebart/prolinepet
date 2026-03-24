@@ -9,6 +9,17 @@ function normalizeCnpj(cnpj: string): string {
   return (cnpj || '').replace(/\D+/g, '');
 }
 
+async function resolveEntityIdByCnpj(entityCnpj: string): Promise<number> {
+  if (!entityCnpj) return 0;
+  const direct = await prisma.entity
+    .findUnique({ where: { cnpj: entityCnpj }, select: { id: true } })
+    .catch(() => null);
+  if (direct?.id) return direct.id;
+  const candidates = await prisma.entity.findMany({ select: { id: true, cnpj: true } });
+  const match = candidates.find((e) => normalizeCnpj(String((e as any).cnpj || '')) === entityCnpj);
+  return match?.id || 0;
+}
+
 // GET: Lista todas as entidades com flag se estão vinculadas ao usuário
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
@@ -16,31 +27,24 @@ export async function GET(request: Request, { params }: { params: { id: string }
     const userDoc = normalizeDoc(String(url.searchParams.get('userDoc') || ''));
     let userId = Number(params.id);
     if (!userId && userDoc) {
-      const uRow: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "User" WHERE "doc"='${userDoc}' LIMIT 1`);
-      userId = Number(uRow[0]?.id || 0);
+      const u = await prisma.user.findUnique({ where: { doc: userDoc }, select: { id: true } });
+      userId = Number(u?.id || 0);
     }
     if (!userId) return NextResponse.json({ error: 'userId inválido' }, { status: 400 });
     try {
-      const rows: any[] = await prisma.$queryRawUnsafe(`
-        SELECT e."id", e."name", e."cnpj",
-               CASE WHEN ue."id" IS NULL THEN 0 ELSE 1 END AS "linked"
-        FROM "Entity" e
-        LEFT JOIN "UserEntity" ue ON ue."entityId" = e."id" AND ue."userId" = ${userId}
-        ORDER BY e."id" ASC
-      `);
-      const safeRows = rows.map((r: any) => ({
-        id: Number(r.id),
-        name: String(r.name),
-        cnpj: String(r.cnpj),
-        linked: Number(r.linked),
-      }));
-      return NextResponse.json({ entities: safeRows });
+      const [entities, links] = await Promise.all([
+        prisma.entity.findMany({ orderBy: { id: 'asc' }, select: { id: true, name: true, cnpj: true } }),
+        prisma.userEntity.findMany({ where: { userId }, select: { entityId: true } }),
+      ]);
+      const linkedSet = new Set(links.map((l) => l.entityId));
+      return NextResponse.json({
+        entities: entities.map((e) => ({ ...e, linked: linkedSet.has(e.id) ? 1 : 0 })),
+      });
     } catch (err: any) {
       // Fallback defensivo: se tabela de vínculo não existir ainda, retornar entidades sem vínculo
       console.warn('Fallback GET /api/admin/users/[id]/entities sem JOIN (provável tabela ausente):', err?.message || err);
-      const ents: any[] = await prisma.$queryRawUnsafe(`SELECT "id", "name", "cnpj" FROM "Entity" ORDER BY "id" ASC`);
-      const safeEnts = ents.map((e: any) => ({ id: Number(e.id), name: String(e.name), cnpj: String(e.cnpj), linked: 0 }));
-      return NextResponse.json({ entities: safeEnts });
+      const ents = await prisma.entity.findMany({ orderBy: { id: 'asc' }, select: { id: true, name: true, cnpj: true } });
+      return NextResponse.json({ entities: ents.map((e) => ({ ...e, linked: 0 })) });
     }
   } catch (err: any) {
     console.error('GET /api/admin/users/[id]/entities error:', err);
@@ -55,42 +59,35 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const body = await request.json();
     const userDoc = body?.userDoc ? normalizeDoc(String(body.userDoc)) : '';
     if (!userId && userDoc) {
-      const uRow: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "User" WHERE "doc"='${userDoc}' LIMIT 1`);
-      userId = Number(uRow[0]?.id || 0);
+      const u = await prisma.user.findUnique({ where: { doc: userDoc }, select: { id: true } });
+      userId = Number(u?.id || 0);
     }
     if (!userId) return NextResponse.json({ error: 'userId inválido' }, { status: 400 });
     let entityId = Number(body?.entityId);
     const entityCnpj = body?.entityCnpj ? normalizeCnpj(String(body.entityCnpj)) : '';
     if (!entityId && entityCnpj) {
-      const eRowId: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "Entity" WHERE regexp_replace("cnpj", '\\D', '', 'g')='${entityCnpj}' LIMIT 1`);
-      entityId = Number(eRowId[0]?.id || 0);
+      entityId = await resolveEntityIdByCnpj(entityCnpj);
     }
     const linked = Boolean(body?.linked);
     if (!entityId) return NextResponse.json({ error: 'entityId inválido' }, { status: 400 });
 
     // Verificar existência de entidade
-    const eRow: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "Entity" WHERE "id"=${entityId} LIMIT 1`);
-    if (eRow.length === 0) return NextResponse.json({ error: 'Entidade não encontrada' }, { status: 404 });
+    const eRow = await prisma.entity.findUnique({ where: { id: entityId }, select: { id: true } });
+    if (!eRow) return NextResponse.json({ error: 'Entidade não encontrada' }, { status: 404 });
 
-    const existing: any[] = await prisma.$queryRawUnsafe(`SELECT "id" FROM "UserEntity" WHERE "userId"=${userId} AND "entityId"=${entityId} LIMIT 1`);
+    const existing = await prisma.userEntity.findUnique({
+      where: { userId_entityId: { userId, entityId } },
+      select: { id: true },
+    });
     if (linked) {
-      if (existing.length === 0) {
-        await prisma.$executeRawUnsafe(`INSERT INTO "UserEntity" ("userId", "entityId") VALUES (${userId}, ${entityId})`);
-      }
+      if (!existing) await prisma.userEntity.create({ data: { userId, entityId } });
     } else {
-      if (existing.length > 0) {
-        const userEntityId = existing[0].id;
-        // Primeiro remove os programas vinculados aos módulos desta entidade
-        await prisma.$executeRawUnsafe(`
-          DELETE FROM "UserEntityModuleProgram"
-          WHERE "userEntityModuleId" IN (
-            SELECT "id" FROM "UserEntityModule" WHERE "userEntityId"=${userEntityId}
-          )
-        `);
-        // Remove os módulos vinculados a esta entidade
-        await prisma.$executeRawUnsafe(`DELETE FROM "UserEntityModule" WHERE "userEntityId"=${userEntityId}`);
-        // Por fim remove o vínculo da entidade
-        await prisma.$executeRawUnsafe(`DELETE FROM "UserEntity" WHERE "id"=${userEntityId}`);
+      if (existing?.id) {
+        await prisma.$transaction([
+          prisma.userEntityModuleProgram.deleteMany({ where: { userEntityModule: { userEntityId: existing.id } } }),
+          prisma.userEntityModule.deleteMany({ where: { userEntityId: existing.id } }),
+          prisma.userEntity.delete({ where: { id: existing.id } }),
+        ]);
       }
     }
     return NextResponse.json({ ok: true });
