@@ -159,6 +159,8 @@ model Entity {
   usersLastEntity User[]         @relation("UserLastEntity")
   userEntities    UserEntity[]
   salesOrders     SalesOrder[]
+
+  @@map("entity")
 }
 
 model Module {
@@ -171,6 +173,8 @@ model Module {
   entityModules     EntityModule[]
   programs          Program[]
   userEntityModules UserEntityModule[]
+
+  @@map("module")
 }
 
 model Program {
@@ -184,6 +188,8 @@ model Program {
   entityModulePrograms     EntityModuleProgram[]
   module                   Module                    @relation(fields: [moduleId], references: [id])
   userEntityModulePrograms UserEntityModuleProgram[]
+
+  @@map("program")
 }
 
 model EntityModule {
@@ -197,6 +203,7 @@ model EntityModule {
   itemLinks EntityModuleItem[]
 
   @@unique([entityId, moduleId])
+  @@map("entitymodule")
 }
 
 model EntityModuleProgram {
@@ -208,6 +215,7 @@ model EntityModuleProgram {
   program        Program      @relation(fields: [programId], references: [id])
 
   @@unique([entityModuleId, programId])
+  @@map("entitymoduleprogram")
 }
 
 model UserEntity {
@@ -219,6 +227,7 @@ model UserEntity {
   modules  UserEntityModule[]
 
   @@unique([userId, entityId])
+  @@map("userentity")
 }
 
 model UserEntityModule {
@@ -231,6 +240,7 @@ model UserEntityModule {
   programs     UserEntityModuleProgram[]
 
   @@unique([userEntityId, moduleId])
+  @@map("userentitymodule")
 }
 
 model UserEntityModuleProgram {
@@ -242,6 +252,7 @@ model UserEntityModuleProgram {
   userEntityModule   UserEntityModule @relation(fields: [userEntityModuleId], references: [id])
 
   @@unique([userEntityModuleId, programId])
+  @@map("userentitymoduleprogram")
 }
 
 model SalesOrder {
