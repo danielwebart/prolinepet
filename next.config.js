@@ -1,7 +1,4 @@
-/**
- * Next.js configuration
- * - Ignores ESLint errors during `next build` to allow deployments
- */
+const path = require('path');
 const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
@@ -10,6 +7,10 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   output: 'standalone',
+  webpack: (config) => {
+    config.resolve.alias['@'] = path.resolve(__dirname, 'src');
+    return config;
+  },
 };
 
 module.exports = nextConfig;
