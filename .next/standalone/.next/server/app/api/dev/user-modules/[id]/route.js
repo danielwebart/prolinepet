@@ -1,0 +1,11 @@
+"use strict";(()=>{var e={};e.id=890,e.ids=[890],e.modules={53524:e=>{e.exports=require("@prisma/client")},20399:e=>{e.exports=require("next/dist/compiled/next-server/app-page.runtime.prod.js")},30517:e=>{e.exports=require("next/dist/compiled/next-server/app-route.runtime.prod.js")},53225:(e,r,t)=>{t.r(r),t.d(r,{originalPathname:()=>v,patchFetch:()=>x,requestAsyncStorage:()=>l,routeModule:()=>m,serverHooks:()=>c,staticGenerationAsyncStorage:()=>p});var s={};t.r(s),t.d(s,{GET:()=>n});var o=t(49303),u=t(88716),a=t(60670),d=t(87070),i=t(13538);async function n(e,{params:r}){try{let e=Number(r.id);if(!e)return d.NextResponse.json({ok:!1,error:"id de usu\xe1rio inv\xe1lido"},{status:400});let t=await i._.$queryRawUnsafe(`
+      SELECT m.id as moduleId, m.code as moduleCode, m.name as moduleName,
+             e.id as entityId, e.name as entityName,
+             uem.allowed as allowed
+      FROM "UserEntityModule" uem
+      JOIN "UserEntity" ue ON ue.id = uem.userEntityId
+      JOIN "Module" m ON m.id = uem.moduleId
+      LEFT JOIN "Entity" e ON e.id = ue.entityId
+      WHERE ue.userId = ${e}
+      ORDER BY e.name, m.name
+    `);return d.NextResponse.json({ok:!0,userId:e,modules:t})}catch(e){return d.NextResponse.json({ok:!1,error:String(e?.message||e)},{status:500})}}let m=new o.AppRouteRouteModule({definition:{kind:u.x.APP_ROUTE,page:"/api/dev/user-modules/[id]/route",pathname:"/api/dev/user-modules/[id]",filename:"route",bundlePath:"app/api/dev/user-modules/[id]/route"},resolvedPagePath:"C:\\Workspace\\prolinepet_build\\src\\app\\api\\dev\\user-modules\\[id]\\route.ts",nextConfigOutput:"standalone",userland:s}),{requestAsyncStorage:l,staticGenerationAsyncStorage:p,serverHooks:c}=m,v="/api/dev/user-modules/[id]/route";function x(){return(0,a.patchFetch)({serverHooks:c,staticGenerationAsyncStorage:p})}},13538:(e,r,t)=>{t.d(r,{_:()=>o});var s=t(53524);let o=global.prisma??new s.PrismaClient({log:["error","warn"]})}};var r=require("../../../../../webpack-runtime.js");r.C(e);var t=e=>r(r.s=e),s=r.X(0,[9276,5972],()=>t(53225));module.exports=s})();

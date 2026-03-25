@@ -3,7 +3,7 @@ module.exports = {
     {
       name: 'portal-web',
       script: 'server.js',
-      cwd: __dirname,
+      cwd: require('path').join(__dirname, '.next', 'standalone'),
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
